@@ -15,7 +15,6 @@ def parse_date(text: str) -> date | ValueError:
     """
     s = " ".join(text.strip().split())  # normalize whitespace
 
-    last_err: Exception | None = None
     for fmt in _FORMATS:
         try:
             return datetime.strptime(s, fmt).date()
