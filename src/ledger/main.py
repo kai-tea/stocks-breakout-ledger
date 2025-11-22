@@ -1,9 +1,8 @@
 # src/main.py
 from pathlib import Path
-from typing import List, Any
-import difflib
+from typing import Annotated
 
-from date_util import parse_date
+from ledger.date_util import parse_date
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
 DATA_DIR = PROJECT_ROOT / "data"

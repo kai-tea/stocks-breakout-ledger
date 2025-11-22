@@ -21,6 +21,6 @@ def parse_date(text: str) -> date | ValueError:
         except ValueError:
             pass
 
-    return ValueError(f"Invalid date '{text}'. Expected 'month day year'")
+    return ValueError(f"Invalid date '{text}'. Expected 'mm dd yyyy'")
 
 __all__ = ["parse_date"]
