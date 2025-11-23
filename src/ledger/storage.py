@@ -14,7 +14,7 @@ def read_entries(path: Path) -> pd.DataFrame:
     else:
         return pd.DataFrame()
 
-def add_entry(ticker: str, data: date):
+def add_entry(ticker: str, date: date):
     df = read_entries(ENTRIES)
     entry_id = str(uuid.uuid4())
 
