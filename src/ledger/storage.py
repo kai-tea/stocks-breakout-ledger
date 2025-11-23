@@ -21,7 +21,7 @@ def add_entry(ticker: str, data: date):
     row = {
         "entry_id": entry_id,
         "ticker": ticker,
-        "date": date,
+        "date": pd.to_datetime(date).date(),
         "created_ad": datetime.today().strftime('%Y-%m-%d')
     }
 
