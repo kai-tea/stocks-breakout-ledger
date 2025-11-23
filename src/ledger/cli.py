@@ -21,11 +21,12 @@ def add(
     print(f"ticker: {ticker}")
 
     d = parse_date(date)
-    if not d:
+    if d is None:
         typer.secho(f"Invalid date: '{date}'. Expected 'mm dd yyyy'")
         raise typer.Exit(code=2)
 
-    if not add_entry(ticker, d):
+    entry_id = add_entry(ticker, d)
+    if entry_id is None:
         typer.secho(f"Invalid ticker'{ticker}'.")
         raise typer.Exit(code=2)
 
