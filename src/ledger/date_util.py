@@ -6,7 +6,7 @@ from datetime import datetime, date
 
 _FORMATS: tuple[str, ...] = ("%m %d %Y", "%b %d %Y", "%B %d %Y")
 
-def parse_date(text: str) -> date | ValueError:
+def parse_date(text: str) -> date | None:
     """
     Parse 'month day year' into a datetime.date.
     Raises:
@@ -21,6 +21,6 @@ def parse_date(text: str) -> date | ValueError:
         except ValueError:
             pass
 
-    return ValueError(f"Invalid date '{text}'. Expected 'mm dd yyyy'")
+    return None
 
 __all__ = ["parse_date"]
