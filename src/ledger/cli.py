@@ -30,5 +30,7 @@ def add(
         typer.secho(f"Invalid ticker'{ticker}'.")
         raise typer.Exit(code=2)
 
+    print(f"added: {ticker}, {date}")
+
 if __name__ == "__main__":
     app()
