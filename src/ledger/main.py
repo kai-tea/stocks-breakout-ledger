@@ -1,48 +1,36 @@
-# src/main.py
-from pathlib import Path
+from datetime import datetime
 from typing import Annotated
 
-from ledger.date_util import parse_date
+import storage
+import typer
 
-PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DATA_DIR = PROJECT_ROOT / "data"
+app = typer.Typer()
 
-def find_ticker_files(ticker: str, data_dir: Path) -> Path | None:
-    """
-    Searches for TXT files that match {ticker}.us.txt
-    """
-    t = ticker.strip().casefold()
-    if not t:
-        return None
+# TODO:
+#   - link with storage.py
+#   - cleanup
 
-    for path in data_dir.rglob("*.txt"):
-        stem = path.stem.casefold()  # e.g., "aapl.us"
-        if stem.startswith(t + "."):
-            return path
+@app.command()
+def add(
+        ticker: Annotated[str, typer.Option("--ticker", "-t", help="MM DD YYYY")],
+        date: Annotated[str, typer.Option("--date", "-d")]
+):
+    from date_util import parse_date
+    from storage import add_entry
 
-    return None
+    print(f"ticker: {ticker}")
 
+    d = parse_date(date)
+    if d is None:
+        typer.secho(f"Invalid date: '{date}'. Expected 'mm dd yyyy'")
+        raise typer.Exit(code=2)
 
-def main() -> None:
-    if not DATA_DIR.exists():
-        print(f"data directory not found: {DATA_DIR}")
-        return
+    entry_id = add_entry(ticker, d)
+    if entry_id is None:
+        typer.secho(f"Invalid ticker'{ticker}'.")
+        raise typer.Exit(code=2)
 
-    ticker = input("Enter ticker: ").strip()
-    match = find_ticker_files(ticker, DATA_DIR)
-
-    if match:
-        print(f"Found {match}")
-    else:
-        print(f"No TXT file found for that ticker in /data.")
-        # Optional: suggest close matches by filename stem
-        stems = {p.stem for p in DATA_DIR.rglob('*.csv')}
-
-    date = parse_date(input("Enter date: ").strip())
-    print(date)
+    print(f"added: {ticker}, {date}")
 
 if __name__ == "__main__":
-    print(PROJECT_ROOT)
-    print(DATA_DIR)
-    while True:
-        main()
+    app()
