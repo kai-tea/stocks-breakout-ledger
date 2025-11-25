@@ -1,7 +1,6 @@
 import pandas as pd
 #from __future__ import annotations
 from datetime import datetime, date
-import uuid
 from ledger.config import *
 
 def read_entries(path: Path) -> pd.DataFrame:
@@ -12,15 +11,22 @@ def read_entries(path: Path) -> pd.DataFrame:
 
 def add_entry(ticker: str, dt: date):
     df = read_entries(ENTRIES)
-    entry_id = str(uuid.uuid4())
 
-    row = {
-        "entry_id": entry_id,
+    target_date = pd.to_datetime(dt).date()
+
+    if not df.empty:
+        mask = (df["ticker"] == ticker) & (df["date"] == target_date)
+        if not df[mask].empty:
+            print(f"Duplicate: {ticker}, {target_date} already exists")
+            return False
+
+    new_row = pd.DataFrame([{
         "ticker": ticker,
         "date": pd.to_datetime(dt).date(),
         "created_ad": datetime.today().strftime('%Y-%m-%d')
-    }
+    }])
 
-    df = pd.concat([df, pd.DataFrame([row])])
+    df = pd.concat([df, new_row])
     df.to_parquet(ENTRIES)
-    return entry_id
+
+    return True
