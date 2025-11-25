@@ -18,6 +18,7 @@ def add(
     from date_util import parse_date
     from storage import add_entry
 
+    ticker = ticker.upper()
     print(f"ticker: {ticker}")
 
     d = parse_date(date)
@@ -25,9 +26,8 @@ def add(
         typer.secho(f"Invalid date: '{date}'. Expected 'mm dd yyyy'")
         raise typer.Exit(code=2)
 
-    entry_id = add_entry(ticker, d)
-    if entry_id is None:
-        typer.secho(f"Invalid ticker'{ticker}'.")
+    if add_entry(ticker, d) is False:
+        typer.secho(f"Could not add ticker '{ticker}'")
         raise typer.Exit(code=2)
 
     print(f"added: {ticker}, {date}")
