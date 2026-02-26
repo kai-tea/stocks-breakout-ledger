@@ -1,0 +1,16 @@
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "bo_fetch_2"
+version = "0.1.0"
+dependencies = [
+    "typer[all]"
+]
+
+[project.scripts] # script for command line shortcut
+fetch = "cli:app"
+
+[tool.setuptools.packages.find]
+where = ["src"]  # Tells setuptools to look in the root for packages
