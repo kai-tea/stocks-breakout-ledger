@@ -19,7 +19,7 @@ def add(
         add(ticker, date)
         print(f"ticker added")
     except Exception:
-        print(f"error")
+        print(f"errort")
 
 
 
