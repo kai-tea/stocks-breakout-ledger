@@ -1,6 +1,6 @@
 from pathlib import Path
 
-def find_file(filename: str, start_path: str = ".") -> Path | None:
+def find_file(filename: str, start_path: Path = Path(".")) -> Path | None:
     """
     :param filename: name of the file
     :param start_path: starting path that is being recursively searched
