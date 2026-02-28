@@ -1,6 +1,7 @@
 import typer
-
 from typing import Annotated
+
+from datetime import datetime
 
 app = typer.Typer()
 
@@ -8,9 +9,10 @@ app = typer.Typer()
 
 def add(
         ticker: str,
-        date: str
+        date: datetime = typer.Argument(..., formats=["%Y-%m-%d"]) # converts to datetime.strptime()
 ):
-    print(f"Hello {ticker} world")
+    print(f"ticker:\t{ticker} \ndate:\t{date}")
+    print(f"day: {date.day}")
 
 if __name__ == "__main__":
     app()
