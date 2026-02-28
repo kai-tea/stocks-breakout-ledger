@@ -4,6 +4,7 @@ from pathlib import Path
 from config import WAREHOUSE_DIR, STOOQ_DIR
 from util import get_path_from_filename
 
+
 def fetch(ticker: str) -> pd.DataFrame:
     # create file_name and search parquet file in warehouse
     parquet_file_name = f"{ticker}.parquet"
