@@ -4,6 +4,17 @@ from pathlib import Path
 from config import WAREHOUSE_DIR, STOOQ_DIR
 from util import get_path_from_filename
 
+def fetch_and_clean_stooq(filepath: Path):
+    """fetches stooq file, renames columns of df and returns it"""
+    df = pd.read_csv(filepath)
+
+    # lower case
+    df.columns = df.columns.str.lower()
+
+    # strip '<' & '>'
+    df.columns = df.columns.str.replace('<', '').str.replace('>', '')
+
+    return df
 
 def fetch(ticker: str) -> pd.DataFrame:
     # create file_name and search parquet file in warehouse
@@ -14,7 +25,6 @@ def fetch(ticker: str) -> pd.DataFrame:
     if parquet_file_path is not None:
         return pd.read_parquet(parquet_file_path)
 
-    # parquet file not found
     # search stooq data for ticker
     stooq_file_name = f"{ticker}.us.txt"
     stooq_file_path = get_path_from_filename(stooq_file_name, search_path=STOOQ_DIR)
@@ -23,8 +33,9 @@ def fetch(ticker: str) -> pd.DataFrame:
     if stooq_file_path is None:
         raise FileNotFoundError(f"No data found for {ticker} in Warehouse or Stooq.")
 
-    # convert stooq txt file -> df -> parquet
-    df = pd.read_csv(stooq_file_path)
+
+    # convert stooq .txt -> df -> parquet
+    df = fetch_and_clean_stooq(stooq_file_path)
 
     new_parquet_file_path = WAREHOUSE_DIR / parquet_file_name
     df.to_parquet(new_parquet_file_path)
