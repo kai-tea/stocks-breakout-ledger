@@ -1,10 +1,14 @@
 from pathlib import Path
 
-def find_file(filename: str, path: str = ".") -> Path | None:
+def find_file(filename: str, start_path: str = ".") -> Path | None:
     """
     :param filename: name of the file
-    :param path: path to that needs to be searched
+    :param start_path: starting path that is being recursively searched
     :return: Path object or None
     """
 
-    return next(Path(path).glob(filename))
+    try:
+        return next(Path(start_path).rglob(filename))
+    except StopIteration:
+        # raised if no file is found
+        return None
