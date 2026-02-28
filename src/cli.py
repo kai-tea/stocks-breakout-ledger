@@ -1,7 +1,8 @@
 import typer
 from typing import Annotated
-
 from datetime import datetime
+
+from main import add
 
 app = typer.Typer()
 
@@ -13,6 +14,15 @@ def add(
 ):
     print(f"ticker:\t{ticker} \ndate:\t{date}")
     print(f"day: {date.day}")
+
+    try:
+        add(ticker, date)
+        print(f"ticker added")
+    except Exception:
+        print(f"error")
+
+
+
 
 if __name__ == "__main__":
     app()
