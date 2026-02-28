@@ -5,5 +5,6 @@ DATA_DIR =      PROJECT_ROOT / "data"
 STOOQ_DIR =     DATA_DIR / "stooq" # contains stooq stocks data
 WAREHOUSE_DIR = DATA_DIR / "warehouse" # contains parquet files that have been converted from .txt stooq files
 
-# ensure warehouse directory exists
+# ensures warehouse directory exists
 WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
+d
