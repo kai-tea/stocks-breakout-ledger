@@ -1,5 +1,14 @@
+# Bytecode
 __pycache__/
-.idea
+
+# MacOS Finder
 .DS_Store
+
+# IDE
+.idea
+
+# Environment
 .venv/
-data/warehouse
+
+# Python metadata
+*.egg-info/
