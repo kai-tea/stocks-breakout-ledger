@@ -7,4 +7,3 @@ WAREHOUSE_DIR = DATA_DIR / "warehouse" # contains parquet files that have been c
 
 # ensures warehouse directory exists
 WAREHOUSE_DIR.mkdir(parents=True, exist_ok=True)
-d
