@@ -12,3 +12,6 @@ __pycache__/
 
 # Python metadata
 *.egg-info/
+
+# warehouse
+data/warehouse
