@@ -15,6 +15,7 @@ def compute_all(df: pd.DataFrame) -> pd.DataFrame:
     return compute_df
 
 def compute(df: pd.DataFrame, date: datetime) -> pd.DataFrame:
+
     df = compute_all(df)
 
-    return df
+    return df.loc(str(date))
