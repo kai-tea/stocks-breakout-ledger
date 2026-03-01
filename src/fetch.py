@@ -5,11 +5,8 @@ from config import PROCESSED_DIR, STOOQ_DIR
 from util import get_path_from_filename
 
 def fetch_and_clean_stooq(filepath: Path):
-    """fetches stooq file,
-        - renames columns of df
-        - reformats dates (eg. '20200101' to '2020-01-01')
-        - sets date as index
-        and returns it"""
+    """fetches stooq file, renames columns and reformats values and returns it"""
+
     df = pd.read_csv(filepath)
 
     # to lower case and strip '<', '>'

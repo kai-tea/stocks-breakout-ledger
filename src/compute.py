@@ -4,7 +4,7 @@ import pandas_ta as ta
 from datetime import datetime
 
 def compute_all(df: pd.DataFrame) -> pd.DataFrame:
-    """calculates all indicators"""
+    """calculates all indicators for all dates"""
 
     compute_df = df.copy()
 
@@ -14,8 +14,9 @@ def compute_all(df: pd.DataFrame) -> pd.DataFrame:
 
     return compute_df
 
-def compute(df: pd.DataFrame, date: datetime) -> pd.DataFrame:
+def compute(df: pd.DataFrame, target_date: datetime) -> pd.DataFrame:
+    """returns calculated indicators for target_date"""
 
     df = compute_all(df)
 
-    return df.loc(str(date))
+    return df.loc[str(target_date.date())]
