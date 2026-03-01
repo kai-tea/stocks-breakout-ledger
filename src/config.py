@@ -4,7 +4,9 @@ PROJECT_ROOT =  Path(__file__).resolve().parent.parent
 DATA_DIR =      PROJECT_ROOT / "data"
 STOOQ_DIR =     DATA_DIR / "stooq" # contains stooq stocks data
 WAREHOUSE_DIR = DATA_DIR / "warehouse"
-PROCESSED_DIR = WAREHOUSE_DIR / "processed" # contains parquet files that have been converted from .txt stooq files
+CLEAN_DIR =     WAREHOUSE_DIR / "clean" # contains cleaned parquet files that have been converted from .txt stooq files
+PROCESSED_DIR = WAREHOUSE_DIR / "processed"
 
 # ensures directory exists
+CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
