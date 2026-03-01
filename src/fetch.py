@@ -1,7 +1,7 @@
 import pandas as pd
 from pathlib import Path
 
-from config import PROCESSED_DIR, STOOQ_DIR
+from config import CLEAN_DIR, STOOQ_DIR
 from util import get_path_from_filename
 
 def fetch_and_clean_stooq(filepath: Path):
@@ -14,11 +14,14 @@ def fetch_and_clean_stooq(filepath: Path):
     df.columns = df.columns.str.replace('<', '').str.replace('>', '')
 
     # drop useless columns for daily
-    columns = ['per', 'time', 'openint']
+    columns = ["per", "time", "openint"]
     df = df.drop(columns=[c for c in columns])
 
+    # rename ticker values eg. AAPL.US to AAPL
+    df["ticker"] = df["ticker"].str.split('.').str[0]
+
     # reformat date
-    df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
+    df["date"] = pd.to_datetime(df["date"], format="%Y%m%d")
 
     # set index without dropping column
     df = df.set_index("date", drop=False)
@@ -28,7 +31,7 @@ def fetch_and_clean_stooq(filepath: Path):
 def fetch(ticker: str) -> pd.DataFrame:
     # create file_name and search parquet file in warehouse
     parquet_file_name = f"{ticker}.parquet"
-    parquet_file_path = get_path_from_filename(parquet_file_name, search_path=PROCESSED_DIR)
+    parquet_file_path = get_path_from_filename(parquet_file_name, search_path=CLEAN_DIR)
 
     # if parquet file was found return df
     if parquet_file_path is not None:
@@ -46,7 +49,7 @@ def fetch(ticker: str) -> pd.DataFrame:
     # convert stooq .txt -> df -> parquet
     df = fetch_and_clean_stooq(stooq_file_path)
 
-    new_parquet_file_path = PROCESSED_DIR / parquet_file_name
+    new_parquet_file_path = CLEAN_DIR / parquet_file_name
     df.to_parquet(new_parquet_file_path)
 
     return df
