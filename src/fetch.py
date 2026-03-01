@@ -5,13 +5,17 @@ from config import PROCESSED_DIR, STOOQ_DIR
 from util import get_path_from_filename
 
 def fetch_and_clean_stooq(filepath: Path):
-    """fetches stooq file, renames columns and reformats values and returns it"""
+    """fetches stooq file, cleans up columns and reformats values and returns it"""
 
     df = pd.read_csv(filepath)
 
     # to lower case and strip '<', '>'
     df.columns = df.columns.str.lower()
     df.columns = df.columns.str.replace('<', '').str.replace('>', '')
+
+    # drop useless columns for daily
+    columns = ['per', 'time', 'openint']
+    df = df.drop(columns=[c for c in columns])
 
     # reformat date
     df['date'] = pd.to_datetime(df['date'], format='%Y%m%d')
