@@ -29,6 +29,8 @@ def fetch_and_clean_stooq(filepath: Path):
     return df
 
 def fetch(ticker: str) -> pd.DataFrame:
+    """returns cleaned up raw df for given ticker"""
+
     # create file_name and search parquet file in warehouse
     parquet_file_name = f"{ticker}.parquet"
     parquet_file_path = get_path_from_filename(parquet_file_name, search_path=CLEAN_DIR)
@@ -45,10 +47,10 @@ def fetch(ticker: str) -> pd.DataFrame:
     if stooq_file_path is None:
         raise FileNotFoundError(f"No data found for {ticker} in Warehouse or Stooq.")
 
-
-    # convert stooq .txt -> df -> parquet
+    # get clean df from stooq data
     df = fetch_and_clean_stooq(stooq_file_path)
 
+    # save clean df in CLEAN_DIR as individual .parquet file
     new_parquet_file_path = CLEAN_DIR / parquet_file_name
     df.to_parquet(new_parquet_file_path)
 
