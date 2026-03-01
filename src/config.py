@@ -10,3 +10,8 @@ PROCESSED_DIR = WAREHOUSE_DIR / "processed"
 # ensures directory exists
 CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+
+# PANDAS DISPLAY CONFIG
+import pandas as pd
+pd.set_option("display.max_columns", None)
+pd.set_option("display.width", 1000)

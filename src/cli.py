@@ -5,10 +5,6 @@ from datetime import datetime
 import main
 from main import add
 
-# --- PANDAS DISPLAY CONFIG ---
-pd.set_option("display.max_columns", None)
-pd.set_option("display.width", 1000)
-# -----------------------------
 
 app = typer.Typer()
 
