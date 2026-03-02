@@ -13,7 +13,7 @@ def add(
         ticker: str,
         date: datetime = typer.Argument(..., formats=["%Y-%m-%d"]) # converts to datetime.strptime()
 ):
-    print(f"adding:\t\t{ticker}\t{date}")
+    print(f"adding:\t\t{ticker} {date.date()}")
     try:
         main.add(ticker, date)
         #print(f"ticker added")

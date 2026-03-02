@@ -5,7 +5,7 @@ from config import CLEAN_DIR, STOOQ_DIR
 from util import get_path_from_filename
 
 def fetch_and_clean_stooq(filepath: Path):
-    """fetches stooq file, cleans up columns and reformats values and returns it"""
+    """fetches stooq file, cleans up columns and sets date as index and returns it"""
 
     df = pd.read_csv(filepath)
 
@@ -29,7 +29,7 @@ def fetch_and_clean_stooq(filepath: Path):
     return df
 
 def fetch(ticker: str) -> pd.DataFrame:
-    """returns cleaned up raw df for given ticker"""
+    """returns cleaned up raw df for given ticker and sets date as index"""
 
     # create file_name and search parquet file in warehouse
     parquet_file_name = f"{ticker}.parquet"

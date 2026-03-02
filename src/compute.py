@@ -1,17 +1,20 @@
 import pandas as pd
 import pandas_ta as ta
-
 from datetime import datetime
 
+from src.fetch import fetch
 
-def compute_all(df: pd.DataFrame) -> pd.DataFrame:
-    """calculates all indicators for all dates"""
+RS_LINE_QQQ_COL = "rs_line_qqq"
+CLOSE_COL = "close"
 
-    compute_df = df.copy()
 
-    compute_df = compute_sma(compute_df)
+def get_qqq() -> pd.DataFrame:
+    return fetch("qqq")
 
-    return compute_df
+
+def get_spy() -> pd.DataFrame:
+    return fetch("spy")
+
 
 def compute(df: pd.DataFrame, ticker: str, target_date: datetime) -> pd.DataFrame:
     """returns calculated indicators for target_date"""
@@ -30,11 +33,41 @@ def compute(df: pd.DataFrame, ticker: str, target_date: datetime) -> pd.DataFram
 
     return df
 
-def compute_sma(df: pd.DataFrame) -> pd.DataFrame:
-    """computes 10 20 50 SMA and returns new df"""
 
-    df.ta.sma(length=10, append=True)
-    df.ta.sma(length=20, append=True)
-    df.ta.sma(length=50, append=True)
+def compute_all(df: pd.DataFrame) -> pd.DataFrame:
+    """calculates all indicators for all dates"""
 
+    df = df.copy()
+
+    df = (df
+        .pipe(add_sma, window=10)
+        .pipe(add_sma, window=20)
+        .pipe(add_sma, window=50)
+        .pipe(add_rs_line, get_qqq()) # RS compared to QQQ
+    )
+
+    return df
+
+
+def check_required_cols(df: pd.DataFrame, required_cols: list):
+    for col in required_cols:
+        if col not in df.columns:
+            raise ValueError(f"Pipeline error: Missing {col}.")
+
+
+def add_rs_line(df: pd.DataFrame, df_cmp: pd.DataFrame) -> pd.DataFrame:
+    """Adds Relative Strength to df compared to df_cmp"""
+    check_required_cols(df, [CLOSE_COL])
+    check_required_cols(df_cmp, [CLOSE_COL])
+
+    df["qqq_close"] = df_cmp[CLOSE_COL]
+
+    df[RS_LINE_QQQ_COL] = df[CLOSE_COL] / df["qqq_close"]
+
+    return df
+
+
+def add_sma(df: pd.DataFrame, window=20):
+    """Adds Simple Moving Average for given window"""
+    df.ta.sma(length=window, append=True)
     return df
