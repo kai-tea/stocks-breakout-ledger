@@ -15,3 +15,7 @@ __pycache__/
 
 # warehouse
 data/warehouse
+date/input
+
+# input file
+data/input.csv
