@@ -8,6 +8,7 @@ from pathlib import Path
 
 PROJECT_ROOT =  Path(__file__).resolve().parent.parent
 DATA_DIR =      PROJECT_ROOT / "data"
+INPUT_DIR =     DATA_DIR / "input"
 STOOQ_DIR =     DATA_DIR / "stooq" # contains raw stooq data
 WAREHOUSE_DIR = DATA_DIR / "warehouse"
 CLEAN_DIR =     WAREHOUSE_DIR / "clean" # contains cleaned parquet files of stocks
@@ -16,4 +17,8 @@ PROCESSED_DIR = WAREHOUSE_DIR / "processed"
 # ensures directories exist
 CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
+INPUT_DIR.mkdir(parents=True, exist_ok=True)
+
+# Input File
+INPUT_FILE = INPUT_DIR / "input.csv"
 
