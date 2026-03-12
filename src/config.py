@@ -19,6 +19,8 @@ CLEAN_DIR.mkdir(parents=True, exist_ok=True)
 PROCESSED_DIR.mkdir(parents=True, exist_ok=True)
 INPUT_DIR.mkdir(parents=True, exist_ok=True)
 
-# Input File
+# Input/Output File
 INPUT_FILE = INPUT_DIR / "input.csv"
+OUTPUT_FILE = PROCESSED_DIR / "output.csv"
+
 

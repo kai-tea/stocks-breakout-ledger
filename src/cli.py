@@ -5,7 +5,7 @@ from datetime import datetime
 
 import main
 from main import add
-from config import INPUT_FILE
+from config import INPUT_FILE, OUTPUT_FILE
 
 app = typer.Typer()
 
@@ -13,6 +13,11 @@ app = typer.Typer()
 def parse_input_file(input_file: str = INPUT_FILE):
     with open(input_file, mode='r') as file:
         reader = csv.DictReader(file)
+
+        # delete old output.csv if it exists
+        OUTPUT_FILE.unlink(missing_ok=True)
+
+        # add ticker row by row
         for row in reader:
             ticker = row['ticker']
             date = row['date']

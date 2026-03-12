@@ -6,7 +6,7 @@ import os
 from fetch import fetch
 from compute import compute
 
-from config import PROCESSED_DIR
+from config import PROCESSED_DIR, OUTPUT_FILE
 
 
 def add(ticker: str, target_date: datetime) -> None:
@@ -14,17 +14,17 @@ def add(ticker: str, target_date: datetime) -> None:
     try:
         df = fetch(ticker)
     except FileNotFoundError as e:
-        print(f"Error: {e}")
+        #print(f"Error: {e}")
+        raise e
 
     # compute indicators
     df = compute(df, ticker, target_date)
 
     # save results to csv
-    csv_file_name = "test.csv"
-    csv_file_path = PROCESSED_DIR/csv_file_name
+    csv_file_path = OUTPUT_FILE
     append_result_to_csv(csv_file_path, df)
 
-    print(f"saved to:\tprocessed/{csv_file_name}")
+    #print(f"saved to:\tprocessed/{csv_file_name}")
 
 def append_result_to_csv(csv_file_path: Path, df: pd.DataFrame) -> None:
     """creates csv file if not present and appends df"""
