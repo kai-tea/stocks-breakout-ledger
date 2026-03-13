@@ -11,11 +11,13 @@ import numpy as np
 def check_required_cols(df: pd.DataFrame, required_cols: list):
     for col in required_cols:
         if col not in df.columns:
-            raise ValueError(f"Pipeline error: Missing {col}.")
+            raise ValueError(f"Compute error: Missing {col}.")
 
 
 def get_qqq() -> pd.DataFrame:
     return fetch("qqq")
+
+QQQ = get_qqq()
 
 
 def get_spy() -> pd.DataFrame:

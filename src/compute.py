@@ -2,7 +2,7 @@ import pandas as pd
 import pandas_ta as ta
 from datetime import datetime
 
-from compute_util import check_required_cols, get_qqq, get_slope
+from compute_util import check_required_cols, get_qqq, get_slope, QQQ
 
 CLOSE_COL = "close"
 QQQ_RS_LINE_COL = "qqq_rs_line"
@@ -13,69 +13,72 @@ def compute(df: pd.DataFrame, ticker: str, target_date: datetime) -> pd.DataFram
     """returns calculated indicators for target_date"""
 
     # compute all indicators
-    df = compute_all(df, target_date)
+    target_ts = pd.Timestamp(target_date)
+    result = compute_all(df, target_ts)
 
-    # get results for target_date only
-    try:
-        df = df.loc[[str(target_date)]]
-    except KeyError as e:
-        raise e
+    if target_ts not in result.index:
+        raise KeyError(target_ts)
 
-    # add a "bo_name" column as identifier for Breakouts (eg. "AAPL_2001_Jan")
+    result = result.loc[[target_ts]].copy()
+
+    # add a "bo_name" column as identifier for Breakouts (eg. "AAPL_2001_Jan") and insert as first col
     year = target_date.year
     month = target_date.strftime("%b")
-    # insert as first column
-    df.insert(0, "bo_name", f"{ticker.upper()}_{year}_{month}")
+    result.insert(0, "bo_name", f"{ticker.upper()}_{year}_{month}")
 
-    return df
-
+    return result
 
 def compute_all(df: pd.DataFrame, target_date: datetime) -> pd.DataFrame:
-    """calculates all indicators for all dates"""
+    """Calculates all indicators for all dates"""
+
     df = df.copy()
 
-    df = (df
-        .pipe(add_sma, window=10)
-        .pipe(add_sma, window=20)
-        .pipe(add_sma, window=50)
-        .pipe(add_qqq_rs_line, get_qqq(), target_date)
-        .pipe(add_qqq_rs_slope, 10)
-        .pipe(add_qqq_rs_slope, 20)
-        .pipe(add_qqq_rs_slope, 30)
-        .pipe(add_sma_profit, target_date, 10)
-        .pipe(add_sma_profit, target_date, 20)
-  )
+    add_sma(df, 10)
+    add_sma(df, 20)
+    add_sma(df, 50)
+
+    add_qqq_rs_line(df, QQQ)
+    add_qqq_rs_slope(df, 10)
+    add_qqq_rs_slope(df, 20)
+    add_qqq_rs_slope(df, 30)
+
+    add_sma_profit(df, target_date, 10)
+    add_sma_profit(df, target_date, 20)
 
     return df
 
 
 def add_sma(df: pd.DataFrame, window=20, decimals=4):
     """Adds Simple Moving Average for given window"""
-    df.ta.sma(length=window, append=True)
     sma_col = f"SMA_{window}"
-    df[sma_col] = df[sma_col].round(decimals);
-    return df
+    df[sma_col] = ta.sma(df[CLOSE_COL], length=window).round(decimals);
 
 
-def add_qqq_rs_line(df: pd.DataFrame, df_cmp: pd.DataFrame, target_date: datetime) -> pd.DataFrame:
+def add_qqq_rs_line(df: pd.DataFrame, target_date: datetime) -> None:
     """Adds Relative Strength to df compared to df_cmp"""
+    qqq_df = QQQ.copy()
+
     check_required_cols(df, [CLOSE_COL])
-    check_required_cols(df_cmp, [CLOSE_COL])
+    check_required_cols(qqq_df, [CLOSE_COL])
 
-    df["qqq_close"] = df_cmp[CLOSE_COL]
+    aligned_cmp = qqq_df[CLOSE_COL].reindex(df.index)
 
-    df[QQQ_RS_LINE_COL] = df[CLOSE_COL] / df["qqq_close"]
+    if aligned_cmp.isna().any():
+        return
+        # raise ValueError(f"QQQ close is missing for one or more dates.")
 
-    return df
+    df[QQQ_RS_LINE_COL] = (df[CLOSE_COL] / aligned_cmp)
 
 
 def add_qqq_rs_slope(df: pd.DataFrame, window=20):
     """Adds qqq rs trend line"""
     check_required_cols(df, [QQQ_RS_LINE_COL])
 
-    df[f"{QQQ_RS_SLOPE}_{window}"] = df[QQQ_RS_LINE_COL].rolling(window=window).apply(get_slope, raw=False)
-
-    return df
+    df[f"{QQQ_RS_SLOPE}_{window}"] = ta.linreg(
+        df[QQQ_RS_LINE_COL],
+        length=window,
+        slope=True
+    )
 
 
 def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.DataFrame:
@@ -88,32 +91,30 @@ def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.D
     - sma{window}_profit_days
     - sma{window}_profit_pct
     """
+    target_ts = pd.Timestamp(target_date)
     sma_col = f"SMA_{window}"
     profit_bars_col = f"sma{window}_profit_bars"
     profit_pct_col = f"sma{window}_profit_pct"
 
     check_required_cols(df, [CLOSE_COL, sma_col])
 
-    result = df.copy()
-    target_ts = pd.Timestamp(target_date)
-
-    if target_ts not in result.index:
-        return result
+    if target_ts not in df.index:
+        return
 
     # initialize output columns only once
-    if profit_bars_col not in result.columns:
-        result[profit_bars_col] = pd.NA
-    if profit_pct_col not in result.columns:
-        result[profit_pct_col] = pd.NA
+    if profit_bars_col not in df.columns:
+        df[profit_bars_col] = pd.NA
+    if profit_pct_col not in df.columns:
+        df[profit_pct_col] = pd.NA
 
-    buy_price = result.at[target_ts, CLOSE_COL]
+    buy_price = df.at[target_ts, CLOSE_COL]
 
     # filter closes that are under the sma
-    future_df = result.loc[result.index > target_ts]
+    future_df = df.loc[df.index > target_ts]
     exit_mask = future_df[CLOSE_COL] < future_df[sma_col]
 
     if not exit_mask.any():
-        return result
+        return
 
     # first viable sell date
     sell_date = future_df.index[exit_mask][0]
@@ -125,7 +126,5 @@ def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.D
     profit_pct = ((sell_price / buy_price) - 1) * 100
 
     # writes days held and profit back into result
-    result.at[target_ts, profit_bars_col] = int(bars_held)
-    result.at[target_ts, profit_pct_col] = round(profit_pct, 4)
-
-    return result
+    df.at[target_ts, profit_bars_col] = int(bars_held)
+    df.at[target_ts, profit_pct_col] = round(profit_pct, 4)
