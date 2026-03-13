@@ -43,7 +43,8 @@ def compute_all(df: pd.DataFrame, target_date: datetime) -> pd.DataFrame:
         .pipe(add_qqq_rs_slope, 20)
         .pipe(add_qqq_rs_slope, 30)
         .pipe(add_sma_profit, target_date, 10)
-    )
+        .pipe(add_sma_profit, target_date, 20)
+  )
 
     return df
 
@@ -80,7 +81,7 @@ def add_qqq_rs_slope(df: pd.DataFrame, window=20):
 def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.DataFrame:
     """
     For the given target_date, calculates:
-    - hold days until the first future close below SMA_{window}
+    - bars held until the first future close below SMA_{window}
     - profit % from buying at the target-date close and selling at that exit close
 
     Results are written into the target_date row in:
@@ -88,7 +89,7 @@ def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.D
     - sma{window}_profit_pct
     """
     sma_col = f"SMA_{window}"
-    profit_days_col = f"sma{window}_profit_days"
+    profit_bars_col = f"sma{window}_profit_bars"
     profit_pct_col = f"sma{window}_profit_pct"
 
     check_required_cols(df, [CLOSE_COL, sma_col])
@@ -100,8 +101,8 @@ def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.D
         return result
 
     # initialize output columns only once
-    if profit_days_col not in result.columns:
-        result[profit_days_col] = pd.NA
+    if profit_bars_col not in result.columns:
+        result[profit_bars_col] = pd.NA
     if profit_pct_col not in result.columns:
         result[profit_pct_col] = pd.NA
 
@@ -118,14 +119,13 @@ def add_sma_profit(df: pd.DataFrame, target_date: datetime, window: int) -> pd.D
     sell_date = future_df.index[exit_mask][0]
     sell_price = future_df.at[sell_date, CLOSE_COL]
 
-    # calculate days held and profit
-    days_held = (sell_date - target_ts).days
+    # calculate bars held and profit
+    # days_held = (sell_date - target_ts).days
+    bars_held = future_df.index.get_loc(sell_date) + 1
     profit_pct = ((sell_price / buy_price) - 1) * 100
 
     # writes days held and profit back into result
-    result.at[target_ts, profit_days_col] = int(days_held)
+    result.at[target_ts, profit_bars_col] = int(bars_held)
     result.at[target_ts, profit_pct_col] = round(profit_pct, 4)
-
-    print(result)
 
     return result
