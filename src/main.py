@@ -18,13 +18,15 @@ def add(ticker: str, target_date: datetime) -> None:
         raise e
 
     # compute indicators
-    df = compute(df, ticker, target_date)
+    try:
+        df = compute(df, ticker, target_date)
+    except Exception as e:
+        print(e, end="")
+        return
 
     # save results to csv
     csv_file_path = OUTPUT_FILE
     append_result_to_csv(csv_file_path, df)
-
-    #print(f"saved to:\tprocessed/{csv_file_name}")
 
 def append_result_to_csv(csv_file_path: Path, df: pd.DataFrame) -> None:
     """creates csv file if not present and appends df"""

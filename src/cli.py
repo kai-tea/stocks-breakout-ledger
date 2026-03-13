@@ -21,11 +21,14 @@ def parse_input_file(input_file: str = INPUT_FILE):
         for row in reader:
             ticker = row['ticker']
             date = row['date']
-            print(f"ticker: {ticker} {date}")
+            print()
+            print(f"ticker: {ticker} {date}", end="\t")
             try:
                 add(ticker.lower(), datetime.strptime(date, "%Y-%m-%d"))
             except FileNotFoundError as e:
-                print(e)
+                print(e, end="")
+            except ValueError as e:
+                print(f"could not convert date: {date}", end="")
 
 
 @app.command("add")
