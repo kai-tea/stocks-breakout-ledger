@@ -1,6 +1,5 @@
-from datetime import datetime
-
 import pandas as pd
+import pandas_ta as ta
 
 from fetch import fetch
 
@@ -14,10 +13,13 @@ def check_required_cols(df: pd.DataFrame, required_cols: list):
             raise ValueError(f"Compute error: Missing {col}.")
 
 
+def get_sma(df: pd.DataFrame, window=20, decimals=4):
+    """Returns Simple Moving Average for given window"""
+    return ta.sma(df["close"], length=window).round(decimals);
+
+
 def get_qqq() -> pd.DataFrame:
     return fetch("qqq")
-
-QQQ = get_qqq()
 
 
 def get_spy() -> pd.DataFrame:
