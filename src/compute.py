@@ -37,6 +37,9 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
     result.update(calc_sma_profit(df, ts, 10))
     result.update(calc_sma_profit(df, ts, 20))
 
+    for bars in range(2, 10):
+        result.update(calc_partial_profit(df, ts, bars, 0.5))
+
     return pd.DataFrame([result], index=[ts])
 
 
@@ -107,4 +110,50 @@ def calc_sma_profit(df: pd.DataFrame, date: datetime, window: int) -> dict:
     return {
         f"sma{window}_profit_bars": int(bars_held),
         f"sma{window}_profit_pct": round(profit_pct, 4),
+    }
+
+
+def calc_partial_profit(df: pd.DataFrame, date: datetime, hold_bars: int, sell_pct: float) -> dict:
+    """
+    Calculates the profit for selling `sell_pct` of the position
+    after `hold_bars` future bars.
+
+    Example:
+    - buy on target-date close
+    - sell 50% after 5 bars
+
+    Returns:
+    - partial sell price
+    - partial profit %
+    """
+    if not 0 <= sell_pct <= 1:
+        raise ValueError("sell_pct must be between 0 and 1")
+
+    ts = pd.Timestamp(date)
+    base = f"partial_{int(sell_pct * 100)}pct_after_{hold_bars}bars"
+
+    if ts not in df.index:
+        return {
+            f"{base}_sell_price": None,
+            f"{base}_profit_pct": None,
+        }
+
+    buy_price = df.at[ts, CLOSE_COL]
+    future_df = df.loc[df.index > ts]
+
+    # return if not enough future bars
+    if len(future_df) < hold_bars:
+        return {
+            f"{base}_sell_price": None,
+            f"{base}_profit_pct": None,
+        }
+
+    # calculate profit pct
+    sell_date = future_df.index[hold_bars - 1]
+    sell_price = future_df.at[sell_date, CLOSE_COL]
+    profit_pct = ((sell_price / buy_price) - 1) * 100
+
+    return {
+        f"{base}_sell_price": round(sell_price, 4),
+        f"{base}_profit_pct": round(profit_pct * sell_pct, 4),
     }
