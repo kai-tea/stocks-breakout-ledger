@@ -30,6 +30,8 @@ def parse_input_file(input_file: str = INPUT_FILE):
             except ValueError as e:
                 print(f"could not convert date: {date}", end="")
 
+    print(f"\nsaved to {OUTPUT_FILE}")
+
 
 @app.command("add")
 def add_ticker(
