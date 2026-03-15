@@ -26,6 +26,7 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
     result = {
         "bo_name": f"{ticker.upper()}_{ts.year}_{ts.strftime("%b")}",
         "buy_price": buy_price,
+        "adr_pct": calc_adr_pct(df, date, 20, 4),
         #"SMA_10": calc_sma(df, date, 10),
         #"SMA_20": calc_sma(df, date, 20),
         #"SMA_50": calc_sma(df, date, 50),
@@ -157,3 +158,24 @@ def calc_partial_profit(df: pd.DataFrame, date: datetime, hold_bars: int, sell_p
         f"{base}_sell_price": round(sell_price, 4),
         f"{base}_profit_pct": round(profit_pct * sell_pct, 4),
     }
+
+def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: int = 4) -> float | None:
+    """
+    Calculates ADR % at `date`.
+
+    ADR % = average of daily range percentages over `window` bars
+          = mean(((high - low) / low) * 100)
+    """
+    ts = pd.Timestamp(date)
+    pos = df.index.get_loc(ts)
+
+    required_cols = ["high", "low"]
+    check_required_cols(df, required_cols)
+
+    if pos < window - 1:
+        return None
+
+    window_df = df.iloc[pos - window + 1 : pos + 1]
+    daily_range_pct = ((window_df["high"] - window_df["low"]) / window_df["low"]) * 100
+
+    return round(daily_range_pct.mean(), decimals)
