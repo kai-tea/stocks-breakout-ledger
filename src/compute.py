@@ -25,6 +25,7 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
 
     result = {
         "bo_name": f"{ticker.upper()}_{ts.year}_{ts.strftime("%b")}",
+        "date": date,
         "buy_price": buy_price,
         "adr_pct": calc_adr_pct(df, date, 20, 4),
         #"SMA_10": calc_sma(df, date, 10),
@@ -35,6 +36,7 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
         "qqq_rs_slope_30": calc_qqq_rs_slope(df, df_qqq, ts, 30)
     }
 
+    result.update(calc_setup_structure(df, ts))
     result.update(calc_sma_profit(df, ts, 10))
     result.update(calc_sma_profit(df, ts, 20))
 
@@ -159,6 +161,7 @@ def calc_partial_profit(df: pd.DataFrame, date: datetime, hold_bars: int, sell_p
         f"{base}_profit_pct": round(profit_pct * sell_pct, 4),
     }
 
+
 def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: int = 4) -> float | None:
     """
     Calculates ADR % at `date`.
@@ -179,3 +182,90 @@ def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: i
     daily_range_pct = ((window_df["high"] - window_df["low"]) / window_df["low"]) * 100
 
     return round(daily_range_pct.mean(), decimals)
+
+
+def calc_setup_structure(
+        df: pd.DataFrame,
+        target_date: datetime,
+        lookback_bars: int = 40,
+        confirm_bars: int = 5,
+        swing_left: int = 5,
+        swing_right: int = 5,
+        open_col: str = "open",
+        close_col: str = "close",
+        decimals: int = 4,
+) -> dict:
+    """
+    Returns:
+    - setup_length: number of bars from pre-base high to target date, inclusive
+    - move_up_pct: % move from the prior up-move low to the pre-base high
+
+    Definitions:
+    - pre-base high: highest max(open, close) in the recent lookback window that is
+      followed by at least `confirm_bars` bars with no higher max(open, close)
+    - up-move low: most recent confirmed swing low before the pre-base high,
+      based on min(open, close)
+    """
+    check_required_cols(df, [open_col, close_col])
+
+    ts = pd.Timestamp(target_date)
+    if ts not in df.index:
+        raise KeyError(f"Target date {ts} not found in index")
+
+    target_pos = df.index.get_loc(ts)
+    start_pos = max(0, target_pos - lookback_bars + 1)
+
+    oc_high = df[[open_col, close_col]].max(axis=1).to_numpy()
+    oc_low = df[[open_col, close_col]].min(axis=1).to_numpy()
+
+    # ---------- find pre-base high ----------
+    prebase_high_pos = None
+    prebase_high_value = float("-inf")
+
+    for i in range(start_pos, target_pos - confirm_bars + 1):
+        current_value = oc_high[i]
+        future_values = oc_high[i + 1: i + 1 + confirm_bars]
+
+        if len(future_values) < confirm_bars:
+            continue
+
+        if future_values.max() <= current_value and current_value > prebase_high_value:
+            prebase_high_value = current_value
+            prebase_high_pos = i
+
+    if prebase_high_pos is None:
+        return {
+            "setup_length": None,
+            "move_up_pct": None,
+        }
+
+    # ---------- find prior swing low before pre-base high ----------
+    swing_low_pos = None
+
+    # need enough room on both sides of the candidate swing low
+    swing_start = swing_left
+    swing_end = prebase_high_pos - swing_right - 1
+
+    for i in range(swing_start, swing_end + 1):
+        window = oc_low[i - swing_left: i + swing_right + 1]
+        current_low = oc_low[i]
+
+        # confirmed unique swing low
+        if current_low == window.min() and (window == current_low).sum() == 1:
+            swing_low_pos = i
+
+    if swing_low_pos is None:
+        return {
+            "setup_length": int(target_pos - prebase_high_pos),
+            "move_up_pct": None,
+        }
+
+    moveup_low_value = oc_low[swing_low_pos]
+    move_up_pct = ((prebase_high_value / moveup_low_value) - 1) * 100
+    setup_length = target_pos - prebase_high_pos
+
+    return {
+        "setup_length": int(setup_length),
+        "move_up_pct": round(move_up_pct, decimals),
+        "low_high_len": int(prebase_high_pos - swing_low_pos)
+    }
