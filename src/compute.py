@@ -1,8 +1,5 @@
 import pandas as pd
-import pandas_ta as ta
 from datetime import datetime
-
-from numba.core.target_extension import target_registry
 
 from compute_util import check_required_cols, get_qqq, get_slope, get_sma
 
@@ -24,7 +21,7 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
     buy_price = df.at[ts, CLOSE_COL]
 
     result = {
-        "bo_name": f"{ticker.upper()}_{ts.year}_{ts.strftime("%b")}",
+        "bo_name": f"{ticker.upper()}_{ts.year}_{ts.strftime('%b')}",
         "date": date,
         "buy_price": buy_price,
         "adr_pct": calc_adr_pct(df, date, 20, 4),
@@ -42,6 +39,8 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
 
     for bars in range(2, 10):
         result.update(calc_partial_profit(df, ts, bars, 0.5))
+        result.update(calc_staged_sma_profit(df, ts, bars, 0.5, 10))
+        result.update(calc_staged_sma_profit(df, ts, bars, 0.5, 20))
 
     return pd.DataFrame([result], index=[ts])
 
@@ -162,6 +161,83 @@ def calc_partial_profit(df: pd.DataFrame, date: datetime, hold_bars: int, sell_p
     }
 
 
+def calc_staged_sma_profit(
+    df: pd.DataFrame,
+    date: datetime,
+    hold_bars: int,
+    sell_pct: float,
+    final_sma_window: int,
+) -> dict:
+    """
+    Calculates a staged exit:
+    - sell `sell_pct` after `hold_bars` future bars
+    - sell the remaining position on the first future close below SMA_{final_sma_window}
+      after that partial exit
+
+    Returns weighted profit percentages on the original full position size.
+    """
+    if not 0 <= sell_pct <= 1:
+        raise ValueError("sell_pct must be between 0 and 1")
+
+    ts = pd.Timestamp(date)
+    remaining_pct = 1 - sell_pct
+    base = (
+        f"final_{int(sell_pct * 100)}pct_after_{hold_bars}bars"
+        f"_then_sma{final_sma_window}"
+    )
+
+    empty_result = {
+        f"{base}_partial_sell_price": None,
+        f"{base}_partial_profit_pct": None,
+        f"{base}_final_sell_price": None,
+        f"{base}_final_profit_pct": None,
+        f"{base}_final_bars": None,
+        f"{base}_total_profit_pct": None,
+    }
+
+    if ts not in df.index:
+        return empty_result
+
+    future_df = df.loc[df.index > ts].copy()
+    if len(future_df) < hold_bars:
+        return empty_result
+
+    buy_price = df.at[ts, CLOSE_COL]
+    partial_sell_date = future_df.index[hold_bars - 1]
+    partial_sell_price = future_df.at[partial_sell_date, CLOSE_COL]
+    partial_profit_pct = ((partial_sell_price / buy_price) - 1) * 100
+
+    sma = get_sma(df, final_sma_window)
+    remaining_df = future_df.loc[future_df.index > partial_sell_date].copy()
+    remaining_df[f"SMA_{final_sma_window}"] = sma.loc[remaining_df.index]
+
+    exit_mask = remaining_df[CLOSE_COL] < remaining_df[f"SMA_{final_sma_window}"]
+    if not exit_mask.any():
+        return {
+            f"{base}_partial_sell_price": round(float(partial_sell_price), 4),
+            f"{base}_partial_profit_pct": round(partial_profit_pct * sell_pct, 4),
+            f"{base}_final_sell_price": None,
+            f"{base}_final_profit_pct": None,
+            f"{base}_final_bars": None,
+            f"{base}_total_profit_pct": None,
+        }
+
+    final_sell_date = remaining_df.index[exit_mask][0]
+    final_sell_price = remaining_df.at[final_sell_date, CLOSE_COL]
+    final_bars = df.index.get_loc(final_sell_date) - df.index.get_loc(ts)
+    final_profit_pct = ((final_sell_price / buy_price) - 1) * 100
+    total_profit_pct = (partial_profit_pct * sell_pct) + (final_profit_pct * remaining_pct)
+
+    return {
+        f"{base}_partial_sell_price": round(float(partial_sell_price), 4),
+        f"{base}_partial_profit_pct": round(partial_profit_pct * sell_pct, 4),
+        f"{base}_final_sell_price": round(float(final_sell_price), 4),
+        f"{base}_final_profit_pct": round(final_profit_pct * remaining_pct, 4),
+        f"{base}_final_bars": int(final_bars),
+        f"{base}_total_profit_pct": round(total_profit_pct, 4),
+    }
+
+
 def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: int = 4) -> float | None:
     """
     Calculates ADR % at `date`.
@@ -188,9 +264,8 @@ def calc_setup_structure(
         df: pd.DataFrame,
         target_date: datetime,
         lookback_bars: int = 40,
-        confirm_bars: int = 5,
-        swing_left: int = 5,
-        swing_right: int = 5,
+        confirm_bars: int = 20,
+        swing_bars: int = 5,
         open_col: str = "open",
         close_col: str = "close",
         decimals: int = 4,
@@ -203,8 +278,9 @@ def calc_setup_structure(
     Definitions:
     - pre-base high: highest max(open, close) in the recent lookback window that is
       followed by at least `confirm_bars` bars with no higher max(open, close)
-    - up-move low: most recent confirmed swing low before the pre-base high,
-      based on min(open, close)
+    - up-move low: the most recent local minimum before the most recent SMA 10 /
+      SMA 20 bullish cross to the left of the pre-base high, confirmed by
+      `swing_bars` bars on both sides
     """
     check_required_cols(df, [open_col, close_col])
 
@@ -217,47 +293,148 @@ def calc_setup_structure(
 
     oc_high = df[[open_col, close_col]].max(axis=1).to_numpy()
     oc_low = df[[open_col, close_col]].min(axis=1).to_numpy()
+    sma10 = get_sma(df, 10)
+    sma20 = get_sma(df, 20)
+
+    def find_prebase_high(allow_ties: bool) -> tuple[int | None, float, int | None]:
+        for current_confirm_bars in range(confirm_bars, 0, -1):
+            current_high_pos = None
+            current_high_value = float("-inf")
+
+            # require swing-style confirmation on both sides, plus forward confirm bars
+            high_start = max(start_pos, swing_bars)
+            high_end = target_pos - max(swing_bars, current_confirm_bars) - 1
+
+            for i in range(high_start, high_end + 1):
+                current_value = oc_high[i]
+
+                # swing window on both sides
+                window = oc_high[i - swing_bars: i + swing_bars + 1]
+                if current_value != window.max():
+                    continue
+                if not allow_ties and (window == current_value).sum() != 1:
+                    continue
+
+                # forward confirmation window
+                future_values = oc_high[i + 1: i + 1 + current_confirm_bars]
+                if len(future_values) < current_confirm_bars:
+                    continue
+
+                if future_values.max() <= current_value and current_value > current_high_value:
+                    current_high_value = current_value
+                    current_high_pos = i
+
+            if current_high_pos is not None:
+                return current_high_pos, current_high_value, current_confirm_bars
+
+        return None, float("-inf"), None
+
+    def find_moveup_low_from_cross(prebase_high_pos: int) -> tuple[int | None, int | None]:
+        sma10_values = sma10.to_numpy()
+        sma20_values = sma20.to_numpy()
+        chosen_cross_pos = None
+
+        # Search all prior history for the most recent bullish cross before the pre-base high.
+        for i in range(1, prebase_high_pos):
+            prev_sma10 = sma10_values[i - 1]
+            prev_sma20 = sma20_values[i - 1]
+            current_sma10 = sma10_values[i]
+            current_sma20 = sma20_values[i]
+
+            if pd.isna(prev_sma10) or pd.isna(prev_sma20) or pd.isna(current_sma10) or pd.isna(current_sma20):
+                continue
+
+            crossed_up = prev_sma10 <= prev_sma20 and current_sma10 > current_sma20
+            if crossed_up:
+                chosen_cross_pos = i
+
+        if chosen_cross_pos is None:
+            return None, None
+
+        latest_local_min_pos = None
+        local_min_start = swing_bars
+        local_min_end = chosen_cross_pos - swing_bars - 1
+
+        for i in range(local_min_start, local_min_end + 1):
+            window = oc_low[i - swing_bars: i + swing_bars + 1]
+            current_low = oc_low[i]
+
+            if current_low == window.min() and (window == current_low).sum() == 1:
+                latest_local_min_pos = i
+
+        if latest_local_min_pos is not None:
+            return latest_local_min_pos, chosen_cross_pos
+
+        fallback_lows = oc_low[:chosen_cross_pos]
+        if len(fallback_lows) == 0:
+            return None, chosen_cross_pos
+
+        fallback_low_pos = int(fallback_lows.argmin())
+        return fallback_low_pos, chosen_cross_pos
 
     # ---------- find pre-base high ----------
-    prebase_high_pos = None
-    prebase_high_value = float("-inf")
+    prebase_high_pos, prebase_high_value, confirm_bars_used = find_prebase_high(allow_ties=False)
+    if prebase_high_pos is None:
+        prebase_high_pos, prebase_high_value, confirm_bars_used = find_prebase_high(allow_ties=True)
+    if prebase_high_pos is None and target_pos > start_pos:
+        fallback_highs = oc_high[start_pos:target_pos]
+        if len(fallback_highs) > 0:
+            prebase_high_pos = start_pos + int(fallback_highs.argmax())
+            prebase_high_value = oc_high[prebase_high_pos]
+            confirm_bars_used = 0
 
-    for i in range(start_pos, target_pos - confirm_bars + 1):
-        current_value = oc_high[i]
-        future_values = oc_high[i + 1: i + 1 + confirm_bars]
-
-        if len(future_values) < confirm_bars:
-            continue
-
-        if future_values.max() <= current_value and current_value > prebase_high_value:
-            prebase_high_value = current_value
-            prebase_high_pos = i
+    target_price = df.at[ts, close_col]
 
     if prebase_high_pos is None:
         return {
             "setup_length": None,
             "move_up_pct": None,
+            "setup_drop_pct": None,
+            "low_high_len": None,
+            "moveup_low_day": None,
+            "moveup_low_price": None,
+            "moveup_low_cross_day": None,
+            "prebase_confirm_bars_used": None,
+            "prebase_high_day": None,
+            "prebase_high_price": None,
+            "setup_low_day": None,
+            "setup_low_price": None,
+            "target_day": ts,
+            "target_price": round(float(target_price), decimals),
         }
 
-    # ---------- find prior swing low before pre-base high ----------
-    swing_low_pos = None
+    # ---------- find move-up low from bullish SMA cross ----------
+    swing_low_pos, moveup_cross_pos = find_moveup_low_from_cross(prebase_high_pos)
+    if swing_low_pos is None and prebase_high_pos > start_pos:
+        fallback_lows = oc_low[start_pos:prebase_high_pos]
+        if len(fallback_lows) > 0:
+            swing_low_pos = start_pos + int(fallback_lows.argmin())
+            moveup_cross_pos = None
 
-    # need enough room on both sides of the candidate swing low
-    swing_start = swing_left
-    swing_end = prebase_high_pos - swing_right - 1
-
-    for i in range(swing_start, swing_end + 1):
-        window = oc_low[i - swing_left: i + swing_right + 1]
-        current_low = oc_low[i]
-
-        # confirmed unique swing low
-        if current_low == window.min() and (window == current_low).sum() == 1:
-            swing_low_pos = i
+    prebase_high_day = df.index[prebase_high_pos]
+    prebase_high_price = prebase_high_value
+    setup_window_lows = oc_low[prebase_high_pos : target_pos + 1]
+    setup_low_offset = int(setup_window_lows.argmin())
+    setup_low_pos = prebase_high_pos + setup_low_offset
+    setup_low_value = oc_low[setup_low_pos]
+    setup_drop_pct = ((prebase_high_price - setup_low_value) / prebase_high_price) * 100
 
     if swing_low_pos is None:
         return {
             "setup_length": int(target_pos - prebase_high_pos),
             "move_up_pct": None,
+            "setup_drop_pct": round(float(setup_drop_pct), decimals),
+            "low_high_len": None,
+            "moveup_low_day": None,
+            "moveup_low_price": None,
+            "moveup_low_cross_day": None,
+            "prebase_confirm_bars_used": int(confirm_bars_used),
+            "prebase_high_day": prebase_high_day,
+            "prebase_high_price": round(float(prebase_high_price), decimals),
+            "setup_low_day": df.index[setup_low_pos],
+            "setup_low_price": round(float(setup_low_value), decimals),
+            "target_day": ts,
+            "target_price": round(float(target_price), decimals),
         }
 
     moveup_low_value = oc_low[swing_low_pos]
@@ -267,5 +444,16 @@ def calc_setup_structure(
     return {
         "setup_length": int(setup_length),
         "move_up_pct": round(move_up_pct, decimals),
-        "low_high_len": int(prebase_high_pos - swing_low_pos)
+        "setup_drop_pct": round(float(setup_drop_pct), decimals),
+        "low_high_len": int(prebase_high_pos - swing_low_pos),
+        "moveup_low_day": df.index[swing_low_pos],
+        "moveup_low_price": round(float(moveup_low_value), decimals),
+        "moveup_low_cross_day": df.index[moveup_cross_pos] if moveup_cross_pos is not None else None,
+        "prebase_confirm_bars_used": int(confirm_bars_used),
+        "prebase_high_day": prebase_high_day,
+        "prebase_high_price": round(float(prebase_high_price), decimals),
+        "setup_low_day": df.index[setup_low_pos],
+        "setup_low_price": round(float(setup_low_value), decimals),
+        "target_day": ts,
+        "target_price": round(float(target_price), decimals),
     }

@@ -1,6 +1,4 @@
 import pandas as pd
-import pandas_ta as ta
-
 from fetch import fetch
 
 from scipy.stats import linregress
@@ -15,7 +13,7 @@ def check_required_cols(df: pd.DataFrame, required_cols: list):
 
 def get_sma(df: pd.DataFrame, window=20, decimals=4):
     """Returns Simple Moving Average for given window"""
-    return ta.sma(df["close"], length=window).round(decimals);
+    return df["close"].rolling(window).mean().round(decimals)
 
 
 def get_qqq() -> pd.DataFrame:
