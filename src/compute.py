@@ -25,6 +25,9 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
         "date": date,
         "buy_price": buy_price,
         "adr_pct": calc_adr_pct(df, date, 20, 4),
+        "gain_1m_pct": calc_gain(df, ts, 21),
+        "gain_3m_pct": calc_gain(df, ts, 63),
+        "gain_6m_pct": calc_gain(df, ts, 126),
         #"SMA_10": calc_sma(df, date, 10),
         #"SMA_20": calc_sma(df, date, 20),
         #"SMA_50": calc_sma(df, date, 50),
@@ -36,6 +39,9 @@ def compute(df: pd.DataFrame, ticker: str, date: datetime) -> pd.DataFrame:
     result.update(calc_setup_structure(df, ts))
     result.update(calc_sma_profit(df, ts, 10))
     result.update(calc_sma_profit(df, ts, 20))
+    result.update(calc_breakout_open_to_sma_peak(df, ts, 20))
+    result.update(calc_breakout_open_to_sma_peak(df, ts, 50))
+    result.update(calc_breakout_open_to_sma_peak(df, ts, 100))
 
     for bars in range(2, 10):
         result.update(calc_partial_profit(df, ts, bars, 0.5))
@@ -161,6 +167,60 @@ def calc_partial_profit(df: pd.DataFrame, date: datetime, hold_bars: int, sell_p
     }
 
 
+def calc_breakout_open_to_sma_peak(
+    df: pd.DataFrame,
+    date: datetime,
+    sma_window: int,
+    open_col: str = "open",
+    close_col: str = "close",
+    decimals: int = 4,
+) -> dict:
+    """
+    Measures the gain from the breakout-day open to the highest max(open, close)
+    reached before price next breaks below SMA_{sma_window} using min(open, close).
+    """
+    ts = pd.Timestamp(date)
+    base = f"breakout_open_to_sma{sma_window}_peak"
+
+    if ts not in df.index:
+        return {
+            f"{base}_pct": None,
+            f"{base}_price": None,
+            f"{base}_day": None,
+        }
+
+    sma = get_sma(df, sma_window)
+    breakout_open = df.at[ts, open_col]
+    future_df = df.loc[df.index >= ts].copy()
+    future_df[f"SMA_{sma_window}"] = sma.loc[future_df.index]
+    future_df["oc_low"] = future_df[[open_col, close_col]].min(axis=1)
+    future_df["oc_high"] = future_df[[open_col, close_col]].max(axis=1)
+
+    cross_mask = future_df["oc_low"] < future_df[f"SMA_{sma_window}"]
+    if cross_mask.any():
+        cross_day = future_df.index[cross_mask][0]
+        peak_window = future_df.loc[future_df.index < cross_day]
+    else:
+        peak_window = future_df
+
+    if peak_window.empty or breakout_open <= 0:
+        return {
+            f"{base}_pct": None,
+            f"{base}_price": None,
+            f"{base}_day": None,
+        }
+
+    peak_day = peak_window["oc_high"].idxmax()
+    peak_price = peak_window.at[peak_day, "oc_high"]
+    gain_pct = ((peak_price / breakout_open) - 1) * 100
+
+    return {
+        f"{base}_pct": round(float(gain_pct), decimals),
+        f"{base}_price": round(float(peak_price), decimals),
+        f"{base}_day": peak_day,
+    }
+
+
 def calc_staged_sma_profit(
     df: pd.DataFrame,
     date: datetime,
@@ -238,7 +298,7 @@ def calc_staged_sma_profit(
     }
 
 
-def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: int = 4) -> float | None:
+def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: int = 2) -> float | None:
     """
     Calculates ADR % at `date`.
 
@@ -260,11 +320,42 @@ def calc_adr_pct(df: pd.DataFrame, date: datetime, window: int = 20, decimals: i
     return round(daily_range_pct.mean(), decimals)
 
 
+def calc_gain(
+    df: pd.DataFrame,
+    date: datetime,
+    window: int,
+    open_col: str = "open",
+    close_col: str = "close",
+    decimals: int = 4,
+) -> float | None:
+    """
+    Calculates the percentage gain from the lowest min(open, close) to the
+    highest max(open, close) inside the trailing `window` bars ending at `date`.
+    """
+    ts = pd.Timestamp(date)
+    pos = df.index.get_loc(ts)
+
+    check_required_cols(df, [open_col, close_col])
+
+    if pos < window - 1:
+        return None
+
+    window_df = df.iloc[pos - window + 1 : pos + 1]
+    oc_low = window_df[[open_col, close_col]].min(axis=1).min()
+    oc_high = window_df[[open_col, close_col]].max(axis=1).max()
+
+    if oc_low <= 0:
+        return None
+
+    gain_pct = ((oc_high / oc_low) - 1) * 100
+    return round(float(gain_pct), decimals)
+
+
 def calc_setup_structure(
         df: pd.DataFrame,
         target_date: datetime,
         lookback_bars: int = 40,
-        confirm_bars: int = 20,
+        confirm_bars: int = 8,
         swing_bars: int = 5,
         open_col: str = "open",
         close_col: str = "close",

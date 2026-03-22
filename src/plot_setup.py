@@ -17,11 +17,19 @@ def _safe_float(value) -> float | None:
     return float(value)
 
 
+BREAKOUT_SMA_STYLES = {
+    20: {"color": "#22c55e", "label": "SMA20"},
+    50: {"color": "#fb7185", "label": "SMA50"},
+    100: {"color": "#f59e0b", "label": "SMA100"},
+}
+
+
 def plot_setup_chart(
     df: pd.DataFrame,
     result: dict,
     lookback_bars: int = 150,
     forward_bars: int = 20,
+    use_log_scale: bool = False,
     show_volume: bool = True,
     show_sma_10: bool = True,
     show_sma_20: bool = True,
@@ -143,7 +151,18 @@ def plot_setup_chart(
         prebase_high_price = _safe_float(result.get("prebase_high_price"))
         setup_low_day = _safe_timestamp(result.get("setup_low_day"))
         setup_low_price = _safe_float(result.get("setup_low_price"))
+        breakout_open_price = None
         moveup_low_cross_price = None
+        breakout_peaks = {
+            sma_window: {
+                "day": _safe_timestamp(result.get(f"breakout_open_to_sma{sma_window}_peak_day")),
+                "price": _safe_float(result.get(f"breakout_open_to_sma{sma_window}_peak_price")),
+            }
+            for sma_window in BREAKOUT_SMA_STYLES
+        }
+
+        if target_day in df.index:
+            breakout_open_price = float(df.at[target_day, "open"])
 
         if moveup_low_cross_day is not None and moveup_low_cross_day in df.index:
             sma10_at_cross = sma10_series.loc[moveup_low_cross_day]
@@ -216,6 +235,21 @@ def plot_setup_chart(
                 col=1,
             )
 
+        if breakout_open_price is not None:
+            fig.add_trace(
+                go.Scatter(
+                    x=[x_value(target_day)],
+                    y=[breakout_open_price],
+                    mode="markers+text",
+                    text=["Breakout Open"],
+                    textposition="bottom left",
+                    marker=dict(size=7, color="#f97316", symbol="square"),
+                    name="Breakout Open",
+                ),
+                row=1,
+                col=1,
+            )
+
         if setup_low_day is not None and setup_low_price is not None:
             fig.add_trace(
                 go.Scatter(
@@ -230,6 +264,39 @@ def plot_setup_chart(
                 row=1,
                 col=1,
             )
+
+        for sma_window, peak_data in breakout_peaks.items():
+            breakout_peak_day = peak_data["day"]
+            breakout_peak_price = peak_data["price"]
+            style = BREAKOUT_SMA_STYLES[sma_window]
+
+            if breakout_peak_day is not None and breakout_peak_price is not None:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[x_value(breakout_peak_day)],
+                        y=[breakout_peak_price],
+                        mode="markers+text",
+                        text=[f"{style['label']} Peak"],
+                        textposition="top right",
+                        marker=dict(size=8, color=style["color"], symbol="star"),
+                        name=f"{style['label']} Peak",
+                    ),
+                    row=1,
+                    col=1,
+                )
+
+            if breakout_open_price is not None and breakout_peak_day is not None and breakout_peak_price is not None:
+                fig.add_trace(
+                    go.Scatter(
+                        x=[x_value(target_day), x_value(breakout_peak_day)],
+                        y=[breakout_open_price, breakout_peak_price],
+                        mode="lines",
+                        line=dict(color=style["color"], width=1, dash="dot"),
+                        name=f"Breakout to {style['label']} Peak",
+                    ),
+                    row=1,
+                    col=1,
+                )
 
         if (
             moveup_low_day is not None
@@ -260,6 +327,7 @@ def plot_setup_chart(
     # soften gridlines (scaling reference bars)
     fig.update_xaxes(showgrid=True, gridcolor="rgba(255, 255, 255, 0.04)", gridwidth=0.5)
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255, 255, 255, 0.04)", gridwidth=0.5)
+    fig.update_yaxes(type="log" if use_log_scale else "linear", row=1, col=1)
 
     return fig
 

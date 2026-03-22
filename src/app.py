@@ -19,11 +19,8 @@ STAGED_PROFIT_COLUMNS = [
     for bars in range(2, 10)
     for sma_window in (10, 20)
     for suffix in (
-        "partial_sell_price",
         "partial_profit_pct",
-        "final_sell_price",
         "final_profit_pct",
-        "final_bars",
         "total_profit_pct",
     )
 ]
@@ -38,12 +35,22 @@ OUTPUT_COLUMNS = [
     "move_up_pct",
     "setup_drop_pct",
     "adr_pct",
+    "gain_1m_pct",
+    "gain_3m_pct",
+    "gain_6m_pct",
+    "breakout_open_to_sma20_peak_pct",
+    "breakout_open_to_sma20_peak_price",
+    "breakout_open_to_sma20_peak_day",
+    "breakout_open_to_sma50_peak_pct",
+    "breakout_open_to_sma50_peak_price",
+    "breakout_open_to_sma50_peak_day",
+    "breakout_open_to_sma100_peak_pct",
+    "breakout_open_to_sma100_peak_price",
+    "breakout_open_to_sma100_peak_day",
     "qqq_rs_slope_10",
     "qqq_rs_slope_20",
     "qqq_rs_slope_30",
-    "sma10_profit_bars",
     "sma10_profit_pct",
-    "sma20_profit_bars",
     "sma20_profit_pct",
     "moveup_low_day",
     "moveup_low_price",
@@ -234,6 +241,18 @@ def main() -> None:
         "move_up_pct",
         "setup_drop_pct",
         "adr_pct",
+        "gain_1m_pct",
+        "gain_3m_pct",
+        "gain_6m_pct",
+        "breakout_open_to_sma20_peak_pct",
+        "breakout_open_to_sma20_peak_price",
+        "breakout_open_to_sma20_peak_day",
+        "breakout_open_to_sma50_peak_pct",
+        "breakout_open_to_sma50_peak_price",
+        "breakout_open_to_sma50_peak_day",
+        "breakout_open_to_sma100_peak_pct",
+        "breakout_open_to_sma100_peak_price",
+        "breakout_open_to_sma100_peak_day",
         "qqq_rs_slope_10",
         "qqq_rs_slope_20",
         "qqq_rs_slope_30",
@@ -261,6 +280,7 @@ def main() -> None:
     if st.button("Run all setups"):
         output_df, error_df = run_batch(input_df)
         if output_df is not None:
+            OUTPUT_FILE.unlink(missing_ok=True)
             export_df = output_df[[c for c in OUTPUT_COLUMNS if c in output_df.columns]]
             export_df.to_csv(OUTPUT_FILE, index=False)
             st.success(f"Saved {len(export_df)} rows to `{OUTPUT_FILE}`")
