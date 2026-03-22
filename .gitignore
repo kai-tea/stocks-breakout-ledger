@@ -15,4 +15,6 @@ __pycache__/
 
 # warehouse
 data/warehouse
-date/input
+
+# notebook
+/notebooks
