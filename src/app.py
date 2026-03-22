@@ -12,6 +12,52 @@ from data import load_ohlcv
 from plot_setup import plot_setup_chart
 
 
+STAGED_PROFIT_COLUMNS = [
+    (
+        f"final_50pct_after_{bars}bars_then_sma{sma_window}_{suffix}"
+    )
+    for bars in range(2, 10)
+    for sma_window in (10, 20)
+    for suffix in (
+        "partial_sell_price",
+        "partial_profit_pct",
+        "final_sell_price",
+        "final_profit_pct",
+        "final_bars",
+        "total_profit_pct",
+    )
+]
+
+
+OUTPUT_COLUMNS = [
+    "input_index",
+    "bo_name",
+    "date",
+    "buy_price",
+    "setup_length",
+    "move_up_pct",
+    "setup_drop_pct",
+    "adr_pct",
+    "qqq_rs_slope_10",
+    "qqq_rs_slope_20",
+    "qqq_rs_slope_30",
+    "sma10_profit_bars",
+    "sma10_profit_pct",
+    "sma20_profit_bars",
+    "sma20_profit_pct",
+    "moveup_low_day",
+    "moveup_low_price",
+    "moveup_low_cross_day",
+    "prebase_confirm_bars_used",
+    "prebase_high_day",
+    "prebase_high_price",
+    "setup_low_day",
+    "setup_low_price",
+    "target_day",
+    "target_price",
+] + STAGED_PROFIT_COLUMNS
+
+
 @st.cache_data(show_spinner=False)
 def load_input_csv(path: Path) -> pd.DataFrame:
     df = pd.read_csv(path)
@@ -107,6 +153,8 @@ def main() -> None:
 
     if "row_idx" not in st.session_state:
         st.session_state.row_idx = 0
+    if "use_log_scale" not in st.session_state:
+        st.session_state.use_log_scale = False
 
     max_index = len(input_df) - 1
     st.sidebar.caption(f"{len(input_df)} setups")
@@ -169,6 +217,7 @@ def main() -> None:
             result_row,
             lookback_bars=lookback_bars,
             forward_bars=forward_bars,
+            use_log_scale=st.session_state.use_log_scale,
             show_volume=show_volume,
             show_sma_10=show_sma_10,
             show_sma_20=show_sma_20,
@@ -176,6 +225,7 @@ def main() -> None:
             show_annotations=show_annotations,
         )
         st.plotly_chart(fig, use_container_width=True)
+        st.checkbox("Logarithmic chart", key="use_log_scale")
     except Exception as exc:
         st.error(f"Chart failed: {exc}")
 
@@ -195,14 +245,6 @@ def main() -> None:
         "final_50pct_after_5bars_then_sma10_total_profit_pct",
         "final_50pct_after_5bars_then_sma20_final_bars",
         "final_50pct_after_5bars_then_sma20_total_profit_pct",
-        "moveup_low_day",
-        "moveup_low_price",
-        "moveup_low_cross_day",
-        "prebase_confirm_bars_used",
-        "prebase_high_day",
-        "prebase_high_price",
-        "setup_low_day",
-        "setup_low_price",
         "target_day",
         "target_price",
     ]
@@ -219,9 +261,10 @@ def main() -> None:
     if st.button("Run all setups"):
         output_df, error_df = run_batch(input_df)
         if output_df is not None:
-            output_df.to_csv(OUTPUT_FILE, index=False)
-            st.success(f"Saved {len(output_df)} rows to `{OUTPUT_FILE}`")
-            st.dataframe(output_df.head(20), use_container_width=True)
+            export_df = output_df[[c for c in OUTPUT_COLUMNS if c in output_df.columns]]
+            export_df.to_csv(OUTPUT_FILE, index=False)
+            st.success(f"Saved {len(export_df)} rows to `{OUTPUT_FILE}`")
+            st.dataframe(export_df.head(20), use_container_width=True)
         if not error_df.empty:
             st.warning(f"{len(error_df)} errors")
             st.dataframe(error_df, use_container_width=True)
