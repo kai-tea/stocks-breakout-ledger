@@ -188,6 +188,10 @@ def main() -> None:
     st.sidebar.header("Options")
     lookback_bars = st.sidebar.slider("Chart lookback bars", 50, 300, 150, 10)
     forward_bars = st.sidebar.slider("Forward bars", 0, 60, 20, 5)
+    show_until_bearish_sma100_cross = st.sidebar.checkbox(
+        "Show until bearish SMA100 cross",
+        value=False,
+    )
     show_sma_10 = st.sidebar.checkbox("Show SMA 10", value=True)
     show_sma_20 = st.sidebar.checkbox("Show SMA 20", value=True)
     show_sma_50 = st.sidebar.checkbox("Show SMA 50", value=False)
@@ -224,6 +228,7 @@ def main() -> None:
             result_row,
             lookback_bars=lookback_bars,
             forward_bars=forward_bars,
+            show_until_bearish_sma100_cross=show_until_bearish_sma100_cross,
             use_log_scale=st.session_state.use_log_scale,
             show_volume=show_volume,
             show_sma_10=show_sma_10,

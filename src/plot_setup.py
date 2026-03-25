@@ -29,6 +29,7 @@ def plot_setup_chart(
     result: dict,
     lookback_bars: int = 150,
     forward_bars: int = 20,
+    show_until_bearish_sma100_cross: bool = False,
     use_log_scale: bool = False,
     show_volume: bool = True,
     show_sma_10: bool = True,
@@ -46,6 +47,20 @@ def plot_setup_chart(
     target_pos = df.index.get_loc(target_day)
     start_pos = max(0, target_pos - lookback_bars + 1)
     end_pos = min(len(df) - 1, target_pos + forward_bars)
+
+    if show_until_bearish_sma100_cross:
+        sma100_series = df["close"].rolling(100).mean()
+        future_df = df.loc[df.index > target_day].copy()
+        future_df["sma100"] = sma100_series.loc[future_df.index]
+        future_df["oc_low"] = future_df[["open", "close"]].min(axis=1)
+        bearish_cross_mask = future_df["oc_low"] < future_df["sma100"]
+
+        if bearish_cross_mask.any():
+            bearish_cross_day = future_df.index[bearish_cross_mask][0]
+            end_pos = df.index.get_loc(bearish_cross_day)
+        else:
+            end_pos = len(df) - 1
+
     plot_df = df.iloc[start_pos : end_pos + 1]
     plot_x = plot_df.index.strftime("%Y-%m-%d")
     sma10_series = df["close"].rolling(10).mean()
@@ -151,7 +166,6 @@ def plot_setup_chart(
         prebase_high_price = _safe_float(result.get("prebase_high_price"))
         setup_low_day = _safe_timestamp(result.get("setup_low_day"))
         setup_low_price = _safe_float(result.get("setup_low_price"))
-        breakout_open_price = None
         moveup_low_cross_price = None
         breakout_peaks = {
             sma_window: {
@@ -160,9 +174,6 @@ def plot_setup_chart(
             }
             for sma_window in BREAKOUT_SMA_STYLES
         }
-
-        if target_day in df.index:
-            breakout_open_price = float(df.at[target_day, "open"])
 
         if moveup_low_cross_day is not None and moveup_low_cross_day in df.index:
             sma10_at_cross = sma10_series.loc[moveup_low_cross_day]
@@ -196,10 +207,10 @@ def plot_setup_chart(
                     x=[x_value(moveup_low_day)],
                     y=[moveup_low_price],
                     mode="markers+text",
-                    text=["Move-up Low"],
+                    text=["Low"],
                     textposition="bottom center",
                     marker=dict(size=8, color="green"),
-                    name="Move-up Low",
+                    name="Low",
                 ),
                 row=1,
                 col=1,
@@ -211,10 +222,10 @@ def plot_setup_chart(
                     x=[x_value(moveup_low_cross_day)],
                     y=[moveup_low_cross_price],
                     mode="markers+text",
-                    text=["Bullish Cross"],
+                    text=["Cross"],
                     textposition="top left",
                     marker=dict(size=7, color="#60a5fa", symbol="diamond"),
-                    name="Bullish Cross",
+                    name="Cross",
                 ),
                 row=1,
                 col=1,
@@ -226,25 +237,10 @@ def plot_setup_chart(
                     x=[x_value(prebase_high_day)],
                     y=[prebase_high_price],
                     mode="markers+text",
-                    text=["Pre-base High"],
+                    text=["High"],
                     textposition="top center",
                     marker=dict(size=8, color="orange"),
-                    name="Pre-base High",
-                ),
-                row=1,
-                col=1,
-            )
-
-        if breakout_open_price is not None:
-            fig.add_trace(
-                go.Scatter(
-                    x=[x_value(target_day)],
-                    y=[breakout_open_price],
-                    mode="markers+text",
-                    text=["Breakout Open"],
-                    textposition="bottom left",
-                    marker=dict(size=7, color="#f97316", symbol="square"),
-                    name="Breakout Open",
+                    name="High",
                 ),
                 row=1,
                 col=1,
@@ -256,7 +252,7 @@ def plot_setup_chart(
                     x=[x_value(setup_low_day)],
                     y=[setup_low_price],
                     mode="markers+text",
-                    text=["Setup Low (Base)"],
+                    text=["Setup Low"],
                     textposition="bottom right",
                     marker=dict(size=7, color="#facc15"),
                     name="Setup Low",
@@ -280,19 +276,6 @@ def plot_setup_chart(
                         textposition="top right",
                         marker=dict(size=8, color=style["color"], symbol="star"),
                         name=f"{style['label']} Peak",
-                    ),
-                    row=1,
-                    col=1,
-                )
-
-            if breakout_open_price is not None and breakout_peak_day is not None and breakout_peak_price is not None:
-                fig.add_trace(
-                    go.Scatter(
-                        x=[x_value(target_day), x_value(breakout_peak_day)],
-                        y=[breakout_open_price, breakout_peak_price],
-                        mode="lines",
-                        line=dict(color=style["color"], width=1, dash="dot"),
-                        name=f"Breakout to {style['label']} Peak",
                     ),
                     row=1,
                     col=1,

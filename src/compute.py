@@ -75,6 +75,10 @@ def calc_qqq_rs_slope(df: pd.DataFrame, df_qqq: pd.DataFrame, date: datetime, wi
     return round(get_slope(arr), decimals)
 
 
+def clamp_profit_pct(value: float, decimals: int = 4) -> float:
+    return round(max(float(value), 0.0), decimals)
+
+
 def calc_sma_profit(df: pd.DataFrame, date: datetime, window: int) -> dict:
     """
     For the given target_date, calculates:
@@ -117,7 +121,7 @@ def calc_sma_profit(df: pd.DataFrame, date: datetime, window: int) -> dict:
 
     return {
         f"sma{window}_profit_bars": int(bars_held),
-        f"sma{window}_profit_pct": round(profit_pct, 4),
+        f"sma{window}_profit_pct": clamp_profit_pct(profit_pct),
     }
 
 
@@ -163,7 +167,7 @@ def calc_partial_profit(df: pd.DataFrame, date: datetime, hold_bars: int, sell_p
 
     return {
         f"{base}_sell_price": round(sell_price, 4),
-        f"{base}_profit_pct": round(profit_pct * sell_pct, 4),
+        f"{base}_profit_pct": clamp_profit_pct(profit_pct * sell_pct),
     }
 
 
@@ -275,7 +279,7 @@ def calc_staged_sma_profit(
     if not exit_mask.any():
         return {
             f"{base}_partial_sell_price": round(float(partial_sell_price), 4),
-            f"{base}_partial_profit_pct": round(partial_profit_pct * sell_pct, 4),
+            f"{base}_partial_profit_pct": clamp_profit_pct(partial_profit_pct * sell_pct),
             f"{base}_final_sell_price": None,
             f"{base}_final_profit_pct": None,
             f"{base}_final_bars": None,
@@ -290,11 +294,11 @@ def calc_staged_sma_profit(
 
     return {
         f"{base}_partial_sell_price": round(float(partial_sell_price), 4),
-        f"{base}_partial_profit_pct": round(partial_profit_pct * sell_pct, 4),
+        f"{base}_partial_profit_pct": clamp_profit_pct(partial_profit_pct * sell_pct),
         f"{base}_final_sell_price": round(float(final_sell_price), 4),
-        f"{base}_final_profit_pct": round(final_profit_pct * remaining_pct, 4),
+        f"{base}_final_profit_pct": clamp_profit_pct(final_profit_pct * remaining_pct),
         f"{base}_final_bars": int(final_bars),
-        f"{base}_total_profit_pct": round(total_profit_pct, 4),
+        f"{base}_total_profit_pct": clamp_profit_pct(total_profit_pct),
     }
 
 
