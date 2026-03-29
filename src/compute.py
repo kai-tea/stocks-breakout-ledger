@@ -371,11 +371,11 @@ def calc_setup_structure(
     - move_up_pct: % move from the prior up-move low to the pre-base high
 
     Definitions:
-    - pre-base high: highest max(open, close) in the recent lookback window that is
-      followed by at least `confirm_bars` bars with no higher max(open, close)
-    - up-move low: the most recent local minimum before the most recent SMA 10 /
-      SMA 20 bullish cross to the left of the pre-base high, confirmed by
-      `swing_bars` bars on both sides
+    - pre-base high: breakout reference high, using a hybrid approach:
+      recent pivot high first, ascending setup boundary second
+    - up-move low: the latest meaningful swing low that launches the move into the
+      chosen reference high, with the bullish SMA 10 / SMA 20 cross retained as
+      context rather than the sole anchor driver
     """
     check_required_cols(df, [open_col, close_col])
 
@@ -386,51 +386,40 @@ def calc_setup_structure(
     target_pos = df.index.get_loc(ts)
     start_pos = max(0, target_pos - lookback_bars + 1)
 
-    oc_high = df[[open_col, close_col]].max(axis=1).to_numpy()
+    price_high = df["high"].to_numpy() if "high" in df.columns else df[[open_col, close_col]].max(axis=1).to_numpy()
+    price_low = df["low"].to_numpy() if "low" in df.columns else df[[open_col, close_col]].min(axis=1).to_numpy()
     oc_low = df[[open_col, close_col]].min(axis=1).to_numpy()
     sma10 = get_sma(df, 10)
     sma20 = get_sma(df, 20)
 
-    def find_prebase_high(allow_ties: bool) -> tuple[int | None, float, int | None]:
-        for current_confirm_bars in range(confirm_bars, 0, -1):
-            current_high_pos = None
-            current_high_value = float("-inf")
+    min_pivot_pullback_pct = 3.0
+    min_base_bars_after_high = 3
+    ascending_window_bars = 12
+    min_ascending_up_ratio = 0.55
+    max_ascending_range_pct = 18.0
+    breakout_near_top_pct = 3.0
+    min_impulse_pct = 15.0
 
-            # require swing-style confirmation on both sides, plus forward confirm bars
-            high_start = max(start_pos, swing_bars)
-            high_end = target_pos - max(swing_bars, current_confirm_bars) - 1
+    def is_unique_swing_high(pos: int, allow_ties: bool) -> bool:
+        window = price_high[pos - swing_bars: pos + swing_bars + 1]
+        current_value = price_high[pos]
+        if current_value != window.max():
+            return False
+        if not allow_ties and (window == current_value).sum() != 1:
+            return False
+        return True
 
-            for i in range(high_start, high_end + 1):
-                current_value = oc_high[i]
+    def is_unique_swing_low(pos: int) -> bool:
+        window = price_low[pos - swing_bars: pos + swing_bars + 1]
+        current_value = price_low[pos]
+        return current_value == window.min() and (window == current_value).sum() == 1
 
-                # swing window on both sides
-                window = oc_high[i - swing_bars: i + swing_bars + 1]
-                if current_value != window.max():
-                    continue
-                if not allow_ties and (window == current_value).sum() != 1:
-                    continue
-
-                # forward confirmation window
-                future_values = oc_high[i + 1: i + 1 + current_confirm_bars]
-                if len(future_values) < current_confirm_bars:
-                    continue
-
-                if future_values.max() <= current_value and current_value > current_high_value:
-                    current_high_value = current_value
-                    current_high_pos = i
-
-            if current_high_pos is not None:
-                return current_high_pos, current_high_value, current_confirm_bars
-
-        return None, float("-inf"), None
-
-    def find_moveup_low_from_cross(prebase_high_pos: int) -> tuple[int | None, int | None]:
+    def find_latest_bullish_cross(before_pos: int) -> int | None:
         sma10_values = sma10.to_numpy()
         sma20_values = sma20.to_numpy()
         chosen_cross_pos = None
 
-        # Search all prior history for the most recent bullish cross before the pre-base high.
-        for i in range(1, prebase_high_pos):
+        for i in range(1, before_pos):
             prev_sma10 = sma10_values[i - 1]
             prev_sma20 = sma20_values[i - 1]
             current_sma10 = sma10_values[i]
@@ -443,40 +432,113 @@ def calc_setup_structure(
             if crossed_up:
                 chosen_cross_pos = i
 
-        if chosen_cross_pos is None:
-            return None, None
+        return chosen_cross_pos
 
+    def find_prebase_high(allow_ties: bool) -> tuple[int | None, float, int | None, str | None, int | None]:
+        for current_confirm_bars in range(confirm_bars, 0, -1):
+            high_start = max(start_pos, swing_bars)
+            high_end = target_pos - max(swing_bars, current_confirm_bars) - 1
+
+            for i in range(high_end, high_start - 1, -1):
+                current_value = price_high[i]
+
+                if not is_unique_swing_high(i, allow_ties):
+                    continue
+
+                future_values = price_high[i + 1: i + 1 + current_confirm_bars]
+                if len(future_values) < current_confirm_bars:
+                    continue
+
+                future_lows = price_low[i + 1: target_pos + 1]
+                if len(future_lows) < min_base_bars_after_high:
+                    continue
+
+                pullback_pct = ((current_value - future_lows.min()) / current_value) * 100 if current_value > 0 else 0.0
+                if future_values.max() <= current_value and pullback_pct >= min_pivot_pullback_pct:
+                    return i, current_value, current_confirm_bars, "pivot", None
+
+        asc_start = max(start_pos, target_pos - ascending_window_bars)
+        if target_pos - asc_start >= max(swing_bars + 1, 4):
+            recent_highs = price_high[asc_start:target_pos]
+            recent_lows = price_low[asc_start:target_pos]
+
+            if len(recent_highs) >= 4:
+                high_diffs = [recent_highs[j] - recent_highs[j - 1] for j in range(1, len(recent_highs))]
+                low_diffs = [recent_lows[j] - recent_lows[j - 1] for j in range(1, len(recent_lows))]
+                high_up_ratio = sum(diff >= 0 for diff in high_diffs) / len(high_diffs)
+                low_up_ratio = sum(diff >= 0 for diff in low_diffs) / len(low_diffs)
+                recent_range_pct = (
+                    ((recent_highs.max() - recent_lows.min()) / recent_highs.max()) * 100
+                    if recent_highs.max() > 0 else float("inf")
+                )
+                breakout_close = df.at[ts, close_col]
+                near_top = breakout_close >= recent_highs.max() * (1 - breakout_near_top_pct / 100)
+
+                if (
+                    high_up_ratio >= min_ascending_up_ratio
+                    and low_up_ratio >= min_ascending_up_ratio
+                    and recent_range_pct <= max_ascending_range_pct
+                    and near_top
+                ):
+                    relative_high_pos = max(
+                        idx for idx, value in enumerate(recent_highs)
+                        if value == recent_highs.max()
+                    )
+                    high_pos = asc_start + relative_high_pos
+                    return high_pos, price_high[high_pos], 0, "ascending", asc_start
+
+        return None, float("-inf"), None, None, None
+
+    def find_moveup_low(prebase_high_pos: int, high_mode: str | None, ascending_start_pos: int | None) -> tuple[int | None, int | None, str | None]:
+        chosen_cross_pos = find_latest_bullish_cross(prebase_high_pos)
+
+        if high_mode == "ascending" and ascending_start_pos is not None:
+            search_end_pos = ascending_start_pos
+        elif chosen_cross_pos is not None and chosen_cross_pos - start_pos >= swing_bars + 1:
+            search_end_pos = chosen_cross_pos
+        else:
+            search_end_pos = prebase_high_pos
+
+        low_start = max(start_pos, swing_bars)
+        low_end = search_end_pos - swing_bars - 1
         latest_local_min_pos = None
-        local_min_start = swing_bars
-        local_min_end = chosen_cross_pos - swing_bars - 1
 
-        for i in range(local_min_start, local_min_end + 1):
-            window = oc_low[i - swing_bars: i + swing_bars + 1]
-            current_low = oc_low[i]
+        if low_end >= low_start:
+            for i in range(low_start, low_end + 1):
+                if not is_unique_swing_low(i):
+                    continue
 
-            if current_low == window.min() and (window == current_low).sum() == 1:
-                latest_local_min_pos = i
+                current_low = price_low[i]
+                if current_low <= 0:
+                    continue
+
+                advance_high = price_high[i: prebase_high_pos + 1].max()
+                advance_pct = ((advance_high / current_low) - 1) * 100
+                if advance_pct >= min_impulse_pct:
+                    latest_local_min_pos = i
 
         if latest_local_min_pos is not None:
-            return latest_local_min_pos, chosen_cross_pos
+            return latest_local_min_pos, chosen_cross_pos, "swing"
 
-        fallback_lows = oc_low[:chosen_cross_pos]
+        fallback_lows = price_low[start_pos:search_end_pos] if search_end_pos > start_pos else []
         if len(fallback_lows) == 0:
-            return None, chosen_cross_pos
+            return None, chosen_cross_pos, None
 
-        fallback_low_pos = int(fallback_lows.argmin())
-        return fallback_low_pos, chosen_cross_pos
+        fallback_low_pos = start_pos + int(fallback_lows.argmin())
+        return fallback_low_pos, chosen_cross_pos, "fallback"
 
     # ---------- find pre-base high ----------
-    prebase_high_pos, prebase_high_value, confirm_bars_used = find_prebase_high(allow_ties=False)
+    prebase_high_pos, prebase_high_value, confirm_bars_used, prebase_high_mode, ascending_start_pos = find_prebase_high(allow_ties=False)
     if prebase_high_pos is None:
-        prebase_high_pos, prebase_high_value, confirm_bars_used = find_prebase_high(allow_ties=True)
+        prebase_high_pos, prebase_high_value, confirm_bars_used, prebase_high_mode, ascending_start_pos = find_prebase_high(allow_ties=True)
     if prebase_high_pos is None and target_pos > start_pos:
-        fallback_highs = oc_high[start_pos:target_pos]
+        fallback_highs = price_high[start_pos:target_pos]
         if len(fallback_highs) > 0:
             prebase_high_pos = start_pos + int(fallback_highs.argmax())
-            prebase_high_value = oc_high[prebase_high_pos]
+            prebase_high_value = price_high[prebase_high_pos]
             confirm_bars_used = 0
+            prebase_high_mode = "fallback"
+            ascending_start_pos = None
 
     target_price = df.at[ts, close_col]
 
@@ -489,22 +551,28 @@ def calc_setup_structure(
             "moveup_low_day": None,
             "moveup_low_price": None,
             "moveup_low_cross_day": None,
+            "moveup_low_mode": None,
             "prebase_confirm_bars_used": None,
             "prebase_high_day": None,
             "prebase_high_price": None,
+            "prebase_high_mode": None,
             "setup_low_day": None,
             "setup_low_price": None,
             "target_day": ts,
             "target_price": round(float(target_price), decimals),
         }
 
-    # ---------- find move-up low from bullish SMA cross ----------
-    swing_low_pos, moveup_cross_pos = find_moveup_low_from_cross(prebase_high_pos)
+    # ---------- find move-up low ----------
+    swing_low_pos, moveup_cross_pos, moveup_low_mode = find_moveup_low(
+        prebase_high_pos,
+        prebase_high_mode,
+        ascending_start_pos,
+    )
     if swing_low_pos is None and prebase_high_pos > start_pos:
-        fallback_lows = oc_low[start_pos:prebase_high_pos]
+        fallback_lows = price_low[start_pos:prebase_high_pos]
         if len(fallback_lows) > 0:
             swing_low_pos = start_pos + int(fallback_lows.argmin())
-            moveup_cross_pos = None
+            moveup_low_mode = "fallback"
 
     prebase_high_day = df.index[prebase_high_pos]
     prebase_high_price = prebase_high_value
@@ -523,16 +591,18 @@ def calc_setup_structure(
             "moveup_low_day": None,
             "moveup_low_price": None,
             "moveup_low_cross_day": None,
+            "moveup_low_mode": None,
             "prebase_confirm_bars_used": int(confirm_bars_used),
             "prebase_high_day": prebase_high_day,
             "prebase_high_price": round(float(prebase_high_price), decimals),
+            "prebase_high_mode": prebase_high_mode,
             "setup_low_day": df.index[setup_low_pos],
             "setup_low_price": round(float(setup_low_value), decimals),
             "target_day": ts,
             "target_price": round(float(target_price), decimals),
         }
 
-    moveup_low_value = oc_low[swing_low_pos]
+    moveup_low_value = price_low[swing_low_pos]
     move_up_pct = ((prebase_high_value / moveup_low_value) - 1) * 100
     setup_length = target_pos - prebase_high_pos
 
@@ -544,9 +614,11 @@ def calc_setup_structure(
         "moveup_low_day": df.index[swing_low_pos],
         "moveup_low_price": round(float(moveup_low_value), decimals),
         "moveup_low_cross_day": df.index[moveup_cross_pos] if moveup_cross_pos is not None else None,
+        "moveup_low_mode": moveup_low_mode,
         "prebase_confirm_bars_used": int(confirm_bars_used),
         "prebase_high_day": prebase_high_day,
         "prebase_high_price": round(float(prebase_high_price), decimals),
+        "prebase_high_mode": prebase_high_mode,
         "setup_low_day": df.index[setup_low_pos],
         "setup_low_price": round(float(setup_low_value), decimals),
         "target_day": ts,

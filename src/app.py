@@ -223,9 +223,12 @@ def main() -> None:
 
     try:
         ohlcv_df = load_ohlcv_cached(ticker)
+        qqq_df = load_ohlcv_cached("qqq")
         fig = plot_setup_chart(
             ohlcv_df,
             result_row,
+            benchmark_df=qqq_df,
+            benchmark_name="QQQ",
             lookback_bars=lookback_bars,
             forward_bars=forward_bars,
             show_until_bearish_sma100_cross=show_until_bearish_sma100_cross,

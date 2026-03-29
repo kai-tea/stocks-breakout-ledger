@@ -27,6 +27,8 @@ BREAKOUT_SMA_STYLES = {
 def plot_setup_chart(
     df: pd.DataFrame,
     result: dict,
+    benchmark_df: pd.DataFrame | None = None,
+    benchmark_name: str = "QQQ",
     lookback_bars: int = 150,
     forward_bars: int = 20,
     show_until_bearish_sma100_cross: bool = False,
@@ -65,6 +67,36 @@ def plot_setup_chart(
     plot_x = plot_df.index.strftime("%Y-%m-%d")
     sma10_series = df["close"].rolling(10).mean()
     sma20_series = df["close"].rolling(20).mean()
+    benchmark_plot = None
+    rs_plot = None
+    moveup_low_day = _safe_timestamp(result.get("moveup_low_day"))
+    moveup_low_price = _safe_float(result.get("moveup_low_price"))
+
+    if benchmark_df is not None and not benchmark_df.empty and "close" in benchmark_df.columns:
+        benchmark_slice = benchmark_df.reindex(plot_df.index)
+        overlap = benchmark_slice["close"].notna() & plot_df["close"].notna()
+        if overlap.any():
+            base_day = plot_df.index[overlap][0]
+            if (
+                moveup_low_day is not None
+                and moveup_low_day in plot_df.index
+                and pd.notna(benchmark_slice.at[moveup_low_day, "close"])
+                and pd.notna(plot_df.at[moveup_low_day, "close"])
+            ):
+                base_day = moveup_low_day
+
+            benchmark_base = float(benchmark_slice.at[base_day, "close"])
+            stock_base = float(plot_df.at[base_day, "close"])
+            if benchmark_base > 0:
+                benchmark_anchor_price = moveup_low_price if moveup_low_price is not None else stock_base
+                benchmark_plot = (benchmark_slice["close"] / benchmark_base) * benchmark_anchor_price
+                if stock_base > 0:
+                    relative_ratio = (plot_df["close"] / benchmark_slice["close"]).replace(
+                        [float("inf"), float("-inf")], pd.NA
+                    )
+                    base_ratio = stock_base / benchmark_base
+                    if base_ratio > 0:
+                        rs_plot = ((relative_ratio / base_ratio) - 1.0) * 100.0
 
     def x_value(day: pd.Timestamp | None) -> str | None:
         if day is None:
@@ -79,6 +111,7 @@ def plot_setup_chart(
         shared_xaxes=True,
         vertical_spacing=0.02,
         row_heights=row_heights,
+        specs=[[{"secondary_y": True}]] + ([[{"secondary_y": False}]] if show_volume else []),
     )
 
     fig.add_trace(
@@ -139,6 +172,35 @@ def plot_setup_chart(
             ),
             row=1,
             col=1,
+        )
+
+    if benchmark_plot is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=plot_x,
+                y=benchmark_plot,
+                mode="lines",
+                name=benchmark_name,
+                line=dict(color="rgba(250, 204, 21, 0.90)", width=1.1),
+                hovertemplate=f"{benchmark_name} (scaled): "+"%{y:.2f}<extra></extra>",
+            ),
+            row=1,
+            col=1,
+        )
+
+    if rs_plot is not None:
+        fig.add_trace(
+            go.Scatter(
+                x=plot_x,
+                y=rs_plot,
+                mode="lines",
+                name="RS vs QQQ",
+                line=dict(color="rgba(34, 197, 94, 0.95)", width=1.0),
+                hovertemplate="RS vs QQQ: %{y:.2f}%<extra></extra>",
+            ),
+            row=1,
+            col=1,
+            secondary_y=True,
         )
 
     if show_volume and "volume" in plot_df.columns:
@@ -311,6 +373,15 @@ def plot_setup_chart(
     fig.update_xaxes(showgrid=True, gridcolor="rgba(255, 255, 255, 0.04)", gridwidth=0.5)
     fig.update_yaxes(showgrid=True, gridcolor="rgba(255, 255, 255, 0.04)", gridwidth=0.5)
     fig.update_yaxes(type="log" if use_log_scale else "linear", row=1, col=1)
+    if rs_plot is not None:
+        fig.update_yaxes(
+            title_text="Comparison %",
+            showgrid=False,
+            zeroline=False,
+            row=1,
+            col=1,
+            secondary_y=True,
+        )
 
     return fig
 

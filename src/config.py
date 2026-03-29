@@ -22,5 +22,5 @@ INPUT_DIR.mkdir(parents=True, exist_ok=True)
 # Input/Output File
 INPUT_FILE = INPUT_DIR / "input.csv"
 OUTPUT_FILE = PROCESSED_DIR / "output.csv"
-
+CANDIDATE_OUTPUT_FILE = PROCESSED_DIR / "candidate_setups.csv"
 
